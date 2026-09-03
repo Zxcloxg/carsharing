@@ -1,0 +1,105 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1060" height="660" viewBox="0 0 1060 660" font-family="Segoe UI, Arial, sans-serif">
+  <defs>
+    <marker id="arrow" markerWidth="10" markerHeight="10" refX="8" refY="3" orient="auto" markerUnits="strokeWidth">
+      <path d="M0,0 L8,3 L0,6 z" fill="#334155"/>
+    </marker>
+    <marker id="arrowInt" markerWidth="10" markerHeight="10" refX="8" refY="3" orient="auto" markerUnits="strokeWidth">
+      <path d="M0,0 L8,3 L0,6 z" fill="#7c3aed"/>
+    </marker>
+  </defs>
+
+  <rect x="0" y="0" width="1060" height="660" fill="#ffffff"/>
+  <text x="530" y="40" text-anchor="middle" font-size="24" font-weight="700" fill="#0f172a">Каршеринг — архитектура (микросервисы)</text>
+
+  <!-- Public zone -->
+  <rect x="20" y="70" width="300" height="540" rx="12" fill="#f0f9ff" stroke="#38bdf8" stroke-width="1.5"/>
+  <text x="40" y="96" font-size="15" font-weight="700" fill="#0369a1">Публичная зона (клиенты)</text>
+
+  <!-- Mobile client -->
+  <rect x="45" y="140" width="250" height="90" rx="10" fill="#e0f2fe" stroke="#0284c7" stroke-width="2"/>
+  <text x="170" y="175" text-anchor="middle" font-size="16" font-weight="700" fill="#0c4a6e">Мобильное приложение</text>
+  <text x="170" y="198" text-anchor="middle" font-size="13" fill="#0c4a6e">арендатор: карта, бронь,</text>
+  <text x="170" y="216" text-anchor="middle" font-size="13" fill="#0c4a6e">старт/стоп поездки, оплата</text>
+
+  <!-- Car IoT -->
+  <rect x="45" y="420" width="250" height="90" rx="10" fill="#e0f2fe" stroke="#0284c7" stroke-width="2"/>
+  <text x="170" y="455" text-anchor="middle" font-size="16" font-weight="700" fill="#0c4a6e">Автомобиль (IoT-устройство)</text>
+  <text x="170" y="478" text-anchor="middle" font-size="13" fill="#0c4a6e">шлёт координаты, заряд/</text>
+  <text x="170" y="496" text-anchor="middle" font-size="13" fill="#0c4a6e">топливо каждые N секунд</text>
+
+  <!-- API Gateway (public boundary) -->
+  <rect x="360" y="120" width="120" height="430" rx="10" fill="#fef9c3" stroke="#ca8a04" stroke-width="2"/>
+  <text x="420" y="320" text-anchor="middle" font-size="16" font-weight="700" fill="#713f12" transform="rotate(-90 420 320)">API Gateway / Nginx (reverse proxy, TLS)</text>
+
+  <!-- Internal zone -->
+  <rect x="520" y="80" width="520" height="530" rx="12" fill="#faf5ff" stroke="#a78bfa" stroke-width="1.8" stroke-dasharray="8 5"/>
+  <text x="540" y="106" font-size="15" font-weight="700" fill="#6d28d9">Внутренняя сеть (private, недоступна извне)</text>
+
+  <!-- booking-service (Django) -->
+  <rect x="545" y="150" width="290" height="120" rx="10" fill="#dcfce7" stroke="#16a34a" stroke-width="2.5"/>
+  <text x="690" y="182" text-anchor="middle" font-size="17" font-weight="700" fill="#14532d">booking-service · Django + DRF</text>
+  <text x="690" y="206" text-anchor="middle" font-size="13" fill="#166534">Пользователи, верификация ВУ,</text>
+  <text x="690" y="224" text-anchor="middle" font-size="13" fill="#166534">автопарк, брони/поездки, тарифы,</text>
+  <text x="690" y="242" text-anchor="middle" font-size="13" fill="#166534">платежи + админка для операторов</text>
+
+  <!-- PostgreSQL -->
+  <g>
+    <ellipse cx="945" cy="168" rx="55" ry="14" fill="#bbf7d0" stroke="#15803d" stroke-width="2"/>
+    <path d="M890,168 v70 a55,14 0 0 0 110,0 v-70" fill="#bbf7d0" stroke="#15803d" stroke-width="2"/>
+    <text x="945" y="215" text-anchor="middle" font-size="14" font-weight="700" fill="#14532d">PostgreSQL</text>
+  </g>
+
+  <!-- telemetry-service (Flask) -->
+  <rect x="545" y="400" width="290" height="120" rx="10" fill="#ffedd5" stroke="#ea580c" stroke-width="2.5"/>
+  <text x="690" y="432" text-anchor="middle" font-size="17" font-weight="700" fill="#7c2d12">telemetry-service · Flask</text>
+  <text x="690" y="456" text-anchor="middle" font-size="13" fill="#9a3412">Приём телеметрии от машин,</text>
+  <text x="690" y="474" text-anchor="middle" font-size="13" fill="#9a3412">актуальные координаты и статус,</text>
+  <text x="690" y="492" text-anchor="middle" font-size="13" fill="#9a3412">поиск ближайших свободных авто</text>
+
+  <!-- Redis -->
+  <g>
+    <ellipse cx="945" cy="418" rx="55" ry="14" fill="#fed7aa" stroke="#c2410c" stroke-width="2"/>
+    <path d="M890,418 v70 a55,14 0 0 0 110,0 v-70" fill="#fed7aa" stroke="#c2410c" stroke-width="2"/>
+    <text x="945" y="465" text-anchor="middle" font-size="14" font-weight="700" fill="#7c2d12">Redis</text>
+  </g>
+
+  <!-- Arrows: client -> gateway -->
+  <line x1="295" y1="185" x2="358" y2="185" stroke="#334155" stroke-width="2.2" marker-end="url(#arrow)"/>
+  <text x="326" y="176" text-anchor="middle" font-size="11" fill="#334155">HTTPS</text>
+
+  <!-- gateway -> booking -->
+  <line x1="482" y1="200" x2="543" y2="210" stroke="#334155" stroke-width="2.2" marker-end="url(#arrow)"/>
+  <text x="512" y="196" text-anchor="middle" font-size="11" fill="#334155">REST /api</text>
+
+  <!-- car -> gateway -->
+  <line x1="295" y1="465" x2="358" y2="465" stroke="#334155" stroke-width="2.2" marker-end="url(#arrow)"/>
+  <text x="326" y="456" text-anchor="middle" font-size="11" fill="#334155">токен</text>
+
+  <!-- gateway -> telemetry -->
+  <line x1="482" y1="455" x2="543" y2="450" stroke="#334155" stroke-width="2.2" marker-end="url(#arrow)"/>
+  <text x="512" y="440" text-anchor="middle" font-size="11" fill="#334155">/telemetry</text>
+
+  <!-- booking -> telemetry (internal) -->
+  <line x1="640" y1="272" x2="640" y2="398" stroke="#7c3aed" stroke-width="2.4" stroke-dasharray="7 4" marker-end="url(#arrowInt)"/>
+  <text x="500" y="345" font-size="11.5" fill="#6d28d9">internal HTTP:</text>
+  <text x="500" y="362" font-size="11.5" fill="#6d28d9">/cars/nearest,</text>
+  <text x="500" y="379" font-size="11.5" fill="#6d28d9">смена статуса авто</text>
+
+  <!-- booking -> postgres -->
+  <line x1="837" y1="210" x2="888" y2="200" stroke="#15803d" stroke-width="2.2" marker-end="url(#arrow)"/>
+  <!-- telemetry -> redis -->
+  <line x1="837" y1="460" x2="888" y2="450" stroke="#c2410c" stroke-width="2.2" marker-end="url(#arrow)"/>
+
+  <!-- Legend -->
+  <rect x="20" y="620" width="1020" height="30" rx="6" fill="#f8fafc" stroke="#e2e8f0"/>
+  <line x1="40" y1="635" x2="80" y2="635" stroke="#334155" stroke-width="2.2" marker-end="url(#arrow)"/>
+  <text x="90" y="639" font-size="12.5" fill="#334155">публичный / внешний вызов</text>
+  <line x1="320" y1="635" x2="360" y2="635" stroke="#7c3aed" stroke-width="2.4" stroke-dasharray="7 4" marker-end="url(#arrowInt)"/>
+  <text x="370" y="639" font-size="12.5" fill="#6d28d9">внутренний вызов между сервисами</text>
+  <rect x="660" y="628" width="16" height="14" fill="#dcfce7" stroke="#16a34a"/>
+  <text x="684" y="639" font-size="12.5" fill="#334155">Django</text>
+  <rect x="760" y="628" width="16" height="14" fill="#ffedd5" stroke="#ea580c"/>
+  <text x="784" y="639" font-size="12.5" fill="#334155">Flask</text>
+  <rect x="850" y="628" width="16" height="14" fill="#fef9c3" stroke="#ca8a04"/>
+  <text x="874" y="639" font-size="12.5" fill="#334155">публичная граница</text>
+</svg>

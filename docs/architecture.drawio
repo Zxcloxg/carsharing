@@ -1,0 +1,68 @@
+<mxfile host="app.diagrams.net" version="24.0.0">
+  <diagram name="Каршеринг — архитектура" id="carsharing-arch">
+    <mxGraphModel dx="1000" dy="700" grid="1" gridSize="10" guides="1" tooltips="1" connect="1" arrows="1" fold="1" page="1" pageScale="1" pageWidth="1100" pageHeight="720" math="0" shadow="0">
+      <root>
+        <mxCell id="0" />
+        <mxCell id="1" parent="0" />
+
+        <mxCell id="title" value="Каршеринг — архитектура (микросервисы)" style="text;html=1;fontSize=20;fontStyle=1;align=center;" vertex="1" parent="1">
+          <mxGeometry x="300" y="10" width="500" height="30" as="geometry" />
+        </mxCell>
+
+        <mxCell id="pubzone" value="Публичная зона (клиенты)" style="rounded=1;fillColor=#f0f9ff;strokeColor=#38bdf8;verticalAlign=top;fontStyle=1;fontColor=#0369a1;fontSize=13;" vertex="1" parent="1">
+          <mxGeometry x="40" y="80" width="280" height="540" as="geometry" />
+        </mxCell>
+        <mxCell id="mobile" value="Мобильное приложение&#10;(арендатор: карта, бронь,&#10;старт/стоп поездки, оплата)" style="rounded=1;fillColor=#e0f2fe;strokeColor=#0284c7;fontColor=#0c4a6e;fontStyle=1;whiteSpace=wrap;html=1;" vertex="1" parent="1">
+          <mxGeometry x="60" y="150" width="240" height="90" as="geometry" />
+        </mxCell>
+        <mxCell id="car" value="Автомобиль (IoT-устройство)&#10;шлёт координаты, заряд/топливо&#10;каждые N секунд" style="rounded=1;fillColor=#e0f2fe;strokeColor=#0284c7;fontColor=#0c4a6e;fontStyle=1;whiteSpace=wrap;html=1;" vertex="1" parent="1">
+          <mxGeometry x="60" y="440" width="240" height="90" as="geometry" />
+        </mxCell>
+
+        <mxCell id="gateway" value="API Gateway / Nginx&#10;(reverse proxy, TLS)&#10;— публичная граница —" style="rounded=1;fillColor=#fef9c3;strokeColor=#ca8a04;fontColor=#713f12;fontStyle=1;whiteSpace=wrap;html=1;" vertex="1" parent="1">
+          <mxGeometry x="380" y="150" width="130" height="380" as="geometry" />
+        </mxCell>
+
+        <mxCell id="intzone" value="Внутренняя сеть (private, недоступна извне)" style="rounded=1;dashed=1;fillColor=#faf5ff;strokeColor=#a78bfa;verticalAlign=top;fontStyle=1;fontColor=#6d28d9;fontSize=13;" vertex="1" parent="1">
+          <mxGeometry x="560" y="90" width="510" height="530" as="geometry" />
+        </mxCell>
+
+        <mxCell id="booking" value="booking-service · Django + DRF&#10;&#10;Пользователи, верификация ВУ, автопарк,&#10;брони/поездки, тарифы, платежи,&#10;админка для операторов" style="rounded=1;fillColor=#dcfce7;strokeColor=#16a34a;strokeWidth=2;fontColor=#14532d;fontStyle=1;whiteSpace=wrap;html=1;" vertex="1" parent="1">
+          <mxGeometry x="590" y="160" width="290" height="120" as="geometry" />
+        </mxCell>
+        <mxCell id="pg" value="PostgreSQL" style="shape=cylinder3;fillColor=#bbf7d0;strokeColor=#15803d;fontColor=#14532d;fontStyle=1;whiteSpace=wrap;html=1;" vertex="1" parent="1">
+          <mxGeometry x="920" y="165" width="110" height="110" as="geometry" />
+        </mxCell>
+
+        <mxCell id="telemetry" value="telemetry-service · Flask&#10;&#10;Приём телеметрии от машин,&#10;актуальные координаты и статус,&#10;поиск ближайших свободных авто" style="rounded=1;fillColor=#ffedd5;strokeColor=#ea580c;strokeWidth=2;fontColor=#7c2d12;fontStyle=1;whiteSpace=wrap;html=1;" vertex="1" parent="1">
+          <mxGeometry x="590" y="410" width="290" height="120" as="geometry" />
+        </mxCell>
+        <mxCell id="redis" value="Redis" style="shape=cylinder3;fillColor=#fed7aa;strokeColor=#c2410c;fontColor=#7c2d12;fontStyle=1;whiteSpace=wrap;html=1;" vertex="1" parent="1">
+          <mxGeometry x="920" y="415" width="110" height="110" as="geometry" />
+        </mxCell>
+
+        <mxCell id="e1" value="HTTPS" style="endArrow=block;html=1;strokeColor=#334155;strokeWidth=2;fontSize=11;" edge="1" parent="1" source="mobile" target="gateway">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="e2" value="REST /api" style="endArrow=block;html=1;strokeColor=#334155;strokeWidth=2;fontSize=11;" edge="1" parent="1" source="gateway" target="booking">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="e3" value="токен устройства" style="endArrow=block;html=1;strokeColor=#334155;strokeWidth=2;fontSize=11;" edge="1" parent="1" source="car" target="gateway">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="e4" value="/telemetry" style="endArrow=block;html=1;strokeColor=#334155;strokeWidth=2;fontSize=11;" edge="1" parent="1" source="gateway" target="telemetry">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="e5" value="internal HTTP: /cars/nearest, смена статуса авто" style="endArrow=block;html=1;dashed=1;strokeColor=#7c3aed;strokeWidth=2;fontColor=#6d28d9;fontSize=11;" edge="1" parent="1" source="booking" target="telemetry">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="e6" value="" style="endArrow=block;html=1;strokeColor=#15803d;strokeWidth=2;" edge="1" parent="1" source="booking" target="pg">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="e7" value="" style="endArrow=block;html=1;strokeColor=#c2410c;strokeWidth=2;" edge="1" parent="1" source="telemetry" target="redis">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+      </root>
+    </mxGraphModel>
+  </diagram>
+</mxfile>

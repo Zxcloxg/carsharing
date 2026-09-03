@@ -1,0 +1,22 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.venv/
+venv/
+env/
+
+# Django
+*.sqlite3
+/**/db.sqlite3
+staticfiles/
+media/
+
+# Env / secrets
+.env
+*.local
+
+# IDE / OS
+.vscode/
+.idea/
+.DS_Store
