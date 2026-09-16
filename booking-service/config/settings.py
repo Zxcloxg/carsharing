@@ -39,6 +39,7 @@ INSTALLED_APPS = [
     'django.contrib.staticfiles',
     'rest_framework',
     'health',
+    'fleet',
 ]
 
 MIDDLEWARE = [
@@ -126,4 +127,13 @@ MAILERS = {
     'default': {
         'BACKEND': 'django.core.mail.backends.console.EmailBackend',
     },
+}
+
+
+# REST framework
+# Единый формат ошибок для всего API: {"error": ..., "details": [...]}
+
+REST_FRAMEWORK = {
+    'EXCEPTION_HANDLER': 'fleet.errors.api_exception_handler',
+    'UNAUTHENTICATED_USER': None,
 }

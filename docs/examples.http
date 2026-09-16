@@ -1,0 +1,268 @@
+### Примеры запросов и ответов: ресурс /api/v1/cars (ПР2)
+#
+# Файл в формате .http: открывается в VS Code (REST Client), JetBrains IDE,
+# либо выполняется вручную через curl (команда приведена перед каждым блоком).
+# Все ответы ниже — реальные, сняты с запущенного booking-service.
+#
+# Запуск сервиса:  cd booking-service && python manage.py runserver 8010
+
+@host = http://localhost:8010
+
+###############################################################################
+# 0. Проверка живости
+# curl -s http://localhost:8010/health
+###############################################################################
+GET {{host}}/health
+
+# HTTP/1.1 200 OK
+# {
+#   "status": "ok",
+#   "service": "booking-service",
+#   "framework": "django",
+#   "time": "2026-09-16T03:21:28.315865+00:00"
+# }
+
+###############################################################################
+# 1. Список машин с пагинацией и фильтром по статусу
+# curl -s "http://localhost:8010/api/v1/cars?page=1&limit=2&status=free"
+###############################################################################
+GET {{host}}/api/v1/cars?page=1&limit=2&status=free
+
+# HTTP/1.1 200 OK
+# {
+#   "items": [
+#     {
+#       "plate": "123ABC02", "brand": "Kia", "model": "Rio", "year": 2022,
+#       "color": "white", "price_per_minute": 65, "fuel_level": 0.8,
+#       "status": "free", "id": "79310f51-8ade-4954-96e3-a65a534347c0",
+#       "created_at": "2026-09-16T03:21:19.619587+00:00",
+#       "updated_at": "2026-09-16T03:21:19.619587+00:00"
+#     },
+#     {
+#       "plate": "456DEF02", "brand": "Hyundai", "model": "Creta", "year": 2023,
+#       "color": "grey", "price_per_minute": 95, "fuel_level": 0.55,
+#       "status": "free", "id": "719d1c7b-f8db-4d24-8b82-6f1197714482",
+#       "created_at": "2026-09-16T03:21:19.619587+00:00",
+#       "updated_at": "2026-09-16T03:21:19.619587+00:00"
+#     }
+#   ],
+#   "page": 1, "limit": 2, "total": 2, "pages": 1
+# }
+
+###############################################################################
+# 2. Фильтр по марке и по цене
+# curl -s "http://localhost:8010/api/v1/cars?brand=kia&max_price_per_minute=70"
+###############################################################################
+GET {{host}}/api/v1/cars?brand=kia&max_price_per_minute=70
+
+# HTTP/1.1 200 OK
+# {
+#   "items": [
+#     {
+#       "plate": "123ABC02", "brand": "Kia", "model": "Rio", "year": 2022,
+#       "color": "white", "price_per_minute": 65, "fuel_level": 0.8,
+#       "status": "free", "id": "79310f51-8ade-4954-96e3-a65a534347c0",
+#       "created_at": "2026-09-16T03:21:19.619587+00:00",
+#       "updated_at": "2026-09-16T03:21:19.619587+00:00"
+#     }
+#   ],
+#   "page": 1, "limit": 10, "total": 1, "pages": 1
+# }
+
+###############################################################################
+# 3. Создание машины
+# curl -s -X POST http://localhost:8010/api/v1/cars -H "Content-Type: application/json" \
+#   -d '{"plate":"555XYZ02","brand":"Toyota","model":"Camry","year":2024,"color":"black","price_per_minute":120,"fuel_level":0.95}'
+###############################################################################
+POST {{host}}/api/v1/cars
+Content-Type: application/json
+
+{
+  "plate": "555XYZ02",
+  "brand": "Toyota",
+  "model": "Camry",
+  "year": 2024,
+  "color": "black",
+  "price_per_minute": 120,
+  "fuel_level": 0.95
+}
+
+# HTTP/1.1 201 Created
+# Location: /api/v1/cars/037324ab-f820-4d62-be1b-e06b9bc38da6
+# {
+#   "plate": "555XYZ02", "brand": "Toyota", "model": "Camry", "year": 2024,
+#   "color": "black", "price_per_minute": 120.0, "fuel_level": 0.95,
+#   "status": "free", "id": "037324ab-f820-4d62-be1b-e06b9bc38da6",
+#   "created_at": "2026-09-16T03:21:39.626673+00:00",
+#   "updated_at": "2026-09-16T03:21:39.626673+00:00"
+# }
+
+###############################################################################
+# 4. Получение одной машины
+# curl -s http://localhost:8010/api/v1/cars/037324ab-f820-4d62-be1b-e06b9bc38da6
+###############################################################################
+GET {{host}}/api/v1/cars/037324ab-f820-4d62-be1b-e06b9bc38da6
+
+# HTTP/1.1 200 OK
+# {
+#   "plate": "555XYZ02", "brand": "Toyota", "model": "Camry", "year": 2024,
+#   "color": "black", "price_per_minute": 120.0, "fuel_level": 0.95,
+#   "status": "free", "id": "037324ab-f820-4d62-be1b-e06b9bc38da6",
+#   "created_at": "2026-09-16T03:21:39.626673+00:00",
+#   "updated_at": "2026-09-16T03:21:39.626673+00:00"
+# }
+
+###############################################################################
+# 5. Полная замена (PUT): сменили модель, год, цвет и тариф
+# curl -s -X PUT http://localhost:8010/api/v1/cars/037324ab-... -H "Content-Type: application/json" -d '{...}'
+###############################################################################
+PUT {{host}}/api/v1/cars/037324ab-f820-4d62-be1b-e06b9bc38da6
+Content-Type: application/json
+
+{
+  "plate": "555XYZ02",
+  "brand": "Toyota",
+  "model": "Camry 70",
+  "year": 2025,
+  "color": "white",
+  "price_per_minute": 135,
+  "fuel_level": 0.6,
+  "status": "free"
+}
+
+# HTTP/1.1 200 OK
+# {
+#   "plate": "555XYZ02", "brand": "Toyota", "model": "Camry 70", "year": 2025,
+#   "color": "white", "price_per_minute": 135.0, "fuel_level": 0.6,
+#   "status": "free", "id": "037324ab-f820-4d62-be1b-e06b9bc38da6",
+#   "created_at": "2026-09-16T03:21:39.626673+00:00",   <- не меняется
+#   "updated_at": "2026-09-16T03:21:53.762340+00:00"    <- обновилось
+# }
+
+###############################################################################
+# 6. Частичное обновление (PATCH): машина уехала на обслуживание
+# curl -s -X PATCH http://localhost:8010/api/v1/cars/037324ab-... -H "Content-Type: application/json" \
+#   -d '{"status":"service","fuel_level":0.1}'
+###############################################################################
+PATCH {{host}}/api/v1/cars/037324ab-f820-4d62-be1b-e06b9bc38da6
+Content-Type: application/json
+
+{
+  "status": "service",
+  "fuel_level": 0.1
+}
+
+# HTTP/1.1 200 OK
+# {
+#   "plate": "555XYZ02", "brand": "Toyota", "model": "Camry 70", "year": 2025,
+#   "color": "white", "price_per_minute": 135.0, "fuel_level": 0.1,
+#   "status": "service", "id": "037324ab-f820-4d62-be1b-e06b9bc38da6",
+#   "created_at": "2026-09-16T03:21:39.626673+00:00",
+#   "updated_at": "2026-09-16T03:21:54.138418+00:00"
+# }
+
+###############################################################################
+# 7. Удаление
+# curl -s -X DELETE http://localhost:8010/api/v1/cars/037324ab-f820-4d62-be1b-e06b9bc38da6
+###############################################################################
+DELETE {{host}}/api/v1/cars/037324ab-f820-4d62-be1b-e06b9bc38da6
+
+# HTTP/1.1 204 No Content
+# (тела ответа нет)
+
+###############################################################################
+# 8. Обращение к удалённой машине -> 404 в едином формате ошибок
+###############################################################################
+GET {{host}}/api/v1/cars/037324ab-f820-4d62-be1b-e06b9bc38da6
+
+# HTTP/1.1 404 Not Found
+# {
+#   "error": "Car not found",
+#   "details": [
+#     {"field": "id", "message": "No car with id 037324ab-f820-4d62-be1b-e06b9bc38da6"}
+#   ]
+# }
+
+###############################################################################
+# 9. Валидация: неверный формат номера, нет обязательного поля,
+#    неверный тип года, неположительный тариф -> 400, а не 500
+# curl -s -X POST http://localhost:8010/api/v1/cars -H "Content-Type: application/json" \
+#   -d '{"plate":"bad!","model":"Rio","year":"recently","price_per_minute":0}'
+###############################################################################
+POST {{host}}/api/v1/cars
+Content-Type: application/json
+
+{
+  "plate": "bad!",
+  "model": "Rio",
+  "year": "recently",
+  "price_per_minute": 0
+}
+
+# HTTP/1.1 400 Bad Request
+# {
+#   "error": "Validation failed",
+#   "details": [
+#     {"field": "plate", "message": "This value does not match the required pattern."},
+#     {"field": "brand", "message": "This field is required."},
+#     {"field": "year", "message": "A valid integer is required."},
+#     {"field": "price_per_minute", "message": "Ensure this value is greater than or equal to 0.01."}
+#   ]
+# }
+
+###############################################################################
+# 10. Валидация: пустое обязательное поле
+###############################################################################
+POST {{host}}/api/v1/cars
+Content-Type: application/json
+
+{
+  "plate": "777QQQ02",
+  "brand": "",
+  "model": "Rio",
+  "year": 2022,
+  "price_per_minute": 70
+}
+
+# HTTP/1.1 400 Bad Request
+# {
+#   "error": "Validation failed",
+#   "details": [
+#     {"field": "brand", "message": "This field may not be blank."}
+#   ]
+# }
+
+###############################################################################
+# 11. Бизнес-правило: госномер уже занят -> 409
+###############################################################################
+POST {{host}}/api/v1/cars
+Content-Type: application/json
+
+{
+  "plate": "123ABC02",
+  "brand": "Kia",
+  "model": "Rio",
+  "year": 2022,
+  "price_per_minute": 65
+}
+
+# HTTP/1.1 409 Conflict
+# {
+#   "error": "Car with this plate already exists",
+#   "details": [
+#     {"field": "plate", "message": "Plate 123ABC02 is already registered"}
+#   ]
+# }
+
+###############################################################################
+# 12. Валидация query-параметров: неизвестный статус в фильтре
+###############################################################################
+GET {{host}}/api/v1/cars?status=flying
+
+# HTTP/1.1 400 Bad Request
+# {
+#   "error": "Validation failed",
+#   "details": [
+#     {"field": "status", "message": "\"flying\" is not a valid choice."}
+#   ]
+# }

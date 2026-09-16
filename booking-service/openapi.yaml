@@ -1,0 +1,288 @@
+openapi: 3.0.3
+info:
+  title: Carsharing booking-service API
+  description: |
+    Публичный REST API ядра каршеринга. В ПР2 спроектирован и реализован
+    ресурс «автомобиль» (Car) — основная сущность предметной области.
+
+    Все ошибки возвращаются в едином формате:
+    {"error": "...", "details": [{"field": "...", "message": "..."}]}
+  version: 1.0.0
+servers:
+  - url: http://localhost:8010
+    description: Локальный запуск
+
+tags:
+  - name: cars
+    description: Автопарк
+  - name: service
+    description: Служебные эндпоинты
+
+paths:
+  /health:
+    get:
+      tags: [service]
+      summary: Проверка живости сервиса
+      operationId: health
+      responses:
+        "200":
+          description: Сервис работает
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status: { type: string, example: ok }
+                  service: { type: string, example: booking-service }
+                  framework: { type: string, example: django }
+                  time: { type: string, format: date-time }
+
+  /api/v1/cars:
+    get:
+      tags: [cars]
+      summary: Список автомобилей с пагинацией и фильтрами
+      operationId: listCars
+      parameters:
+        - name: page
+          in: query
+          description: Номер страницы, начиная с 1
+          schema: { type: integer, minimum: 1, default: 1 }
+        - name: limit
+          in: query
+          description: Размер страницы
+          schema: { type: integer, minimum: 1, maximum: 100, default: 10 }
+        - name: status
+          in: query
+          description: Фильтр по статусу автомобиля
+          schema:
+            type: string
+            enum: [free, booked, in_rent, service]
+        - name: brand
+          in: query
+          description: Фильтр по марке, подстрока без учёта регистра
+          schema: { type: string, maxLength: 50 }
+        - name: max_price_per_minute
+          in: query
+          description: Фильтр по цене — не дороже указанной
+          schema: { type: number, format: double, minimum: 0.01 }
+      responses:
+        "200":
+          description: Страница списка
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/CarPage" }
+        "400":
+          $ref: "#/components/responses/ValidationError"
+    post:
+      tags: [cars]
+      summary: Добавить автомобиль в автопарк
+      operationId: createCar
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/CarInput" }
+      responses:
+        "201":
+          description: Автомобиль создан
+          headers:
+            Location:
+              description: Путь созданного ресурса
+              schema: { type: string }
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Car" }
+        "400":
+          $ref: "#/components/responses/ValidationError"
+        "409":
+          $ref: "#/components/responses/Conflict"
+
+  /api/v1/cars/{id}:
+    parameters:
+      - name: id
+        in: path
+        required: true
+        description: Идентификатор автомобиля (UUID)
+        schema: { type: string, format: uuid }
+    get:
+      tags: [cars]
+      summary: Получить автомобиль по идентификатору
+      operationId: getCar
+      responses:
+        "200":
+          description: Автомобиль найден
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Car" }
+        "404":
+          $ref: "#/components/responses/NotFound"
+    put:
+      tags: [cars]
+      summary: Полностью заменить данные автомобиля
+      operationId: replaceCar
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/CarInput" }
+      responses:
+        "200":
+          description: Автомобиль обновлён
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Car" }
+        "400":
+          $ref: "#/components/responses/ValidationError"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "409":
+          $ref: "#/components/responses/Conflict"
+    patch:
+      tags: [cars]
+      summary: Частично обновить автомобиль
+      operationId: patchCar
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/CarPatch" }
+      responses:
+        "200":
+          description: Автомобиль обновлён
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Car" }
+        "400":
+          $ref: "#/components/responses/ValidationError"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "409":
+          $ref: "#/components/responses/Conflict"
+    delete:
+      tags: [cars]
+      summary: Удалить автомобиль из автопарка
+      operationId: deleteCar
+      responses:
+        "204":
+          description: Удалён, тела ответа нет
+        "404":
+          $ref: "#/components/responses/NotFound"
+
+components:
+  schemas:
+    CarInput:
+      type: object
+      required: [plate, brand, model, year, price_per_minute]
+      properties:
+        plate:
+          type: string
+          pattern: "^[A-Z0-9-]{4,10}$"
+          description: Госномер, уникален в пределах автопарка
+          example: "123ABC02"
+        brand: { type: string, minLength: 2, maxLength: 50, example: Kia }
+        model: { type: string, minLength: 1, maxLength: 50, example: Rio }
+        year: { type: integer, minimum: 1990, maximum: 2027, example: 2022 }
+        color:
+          type: string
+          minLength: 2
+          maxLength: 30
+          nullable: true
+          example: white
+        price_per_minute:
+          type: number
+          format: double
+          minimum: 0.01
+          description: Тариф за минуту аренды, тенге
+          example: 65
+        fuel_level:
+          type: number
+          format: double
+          minimum: 0
+          maximum: 1
+          default: 1
+          description: Доля топлива или заряда, от 0 до 1
+          example: 0.8
+        status:
+          type: string
+          enum: [free, booked, in_rent, service]
+          default: free
+    CarPatch:
+      description: Любое подмножество полей CarInput, минимум одно поле
+      type: object
+      minProperties: 1
+      properties:
+        plate: { type: string, pattern: "^[A-Z0-9-]{4,10}$" }
+        brand: { type: string, minLength: 2, maxLength: 50 }
+        model: { type: string, minLength: 1, maxLength: 50 }
+        year: { type: integer, minimum: 1990, maximum: 2027 }
+        color: { type: string, minLength: 2, maxLength: 30, nullable: true }
+        price_per_minute: { type: number, format: double, minimum: 0.01 }
+        fuel_level: { type: number, format: double, minimum: 0, maximum: 1 }
+        status: { type: string, enum: [free, booked, in_rent, service] }
+    Car:
+      allOf:
+        - $ref: "#/components/schemas/CarInput"
+        - type: object
+          required: [id, created_at, updated_at]
+          properties:
+            id: { type: string, format: uuid, readOnly: true }
+            created_at: { type: string, format: date-time, readOnly: true }
+            updated_at: { type: string, format: date-time, readOnly: true }
+    CarPage:
+      type: object
+      required: [items, page, limit, total, pages]
+      properties:
+        items:
+          type: array
+          items: { $ref: "#/components/schemas/Car" }
+        page: { type: integer, example: 1 }
+        limit: { type: integer, example: 10 }
+        total: { type: integer, description: Всего записей после фильтрации, example: 3 }
+        pages: { type: integer, description: Всего страниц, example: 1 }
+    Error:
+      type: object
+      required: [error, details]
+      properties:
+        error:
+          type: string
+          description: Человекочитаемое сообщение об ошибке
+          example: Validation failed
+        details:
+          type: array
+          description: Уточнения; для ошибок валидации — по одному на поле
+          items:
+            type: object
+            properties:
+              field: { type: string, example: brand }
+              message: { type: string, example: This field is required. }
+  responses:
+    ValidationError:
+      description: Некорректные входные данные
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/Error" }
+          example:
+            error: Validation failed
+            details:
+              - field: brand
+                message: This field is required.
+    NotFound:
+      description: Автомобиль не найден
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/Error" }
+          example:
+            error: Car not found
+            details:
+              - field: id
+                message: No car with id 00000000-0000-0000-0000-000000000000
+    Conflict:
+      description: Автомобиль с таким госномером уже существует
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/Error" }
+          example:
+            error: Car with this plate already exists
+            details:
+              - field: plate
+                message: Plate 123ABC02 is already registered

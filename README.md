@@ -50,11 +50,13 @@ carsharing/
 ├── .gitignore
 ├── docs/
 │   ├── requirements.md      # бизнес-задача, user stories, критерии приёмки
+│   ├── api.md               # ПР2: сущность Car, URI, валидация, формат ошибок
+│   ├── examples.http        # ПР2: примеры запросов и ответов
 │   ├── backlog.md           # бэклог на семестр для Kanban
 │   ├── architecture.drawio  # редактируемая схема
 │   ├── architecture.svg
 │   └── architecture.png
-├── booking-service/         # Django + DRF
+├── booking-service/         # Django + DRF (+ openapi.yaml — контракт API)
 └── telemetry-service/       # Flask
 ```
 
@@ -98,3 +100,22 @@ curl "http://127.0.0.1:8020/cars/nearest?lat=55.7515&lon=37.6170&radius_km=3"
 
 Бэклог на семестр — в [`docs/backlog.md`](docs/backlog.md); он перенесён на
 Kanban-доску (колонки Backlog → To Do → In Progress → Review → Done).
+
+## REST API (ПР2)
+
+Основная сущность предметной области — автомобиль автопарка (`Car`), ресурс
+`/api/v1/cars` в `booking-service`. Контракт описан формально в
+[`booking-service/openapi.yaml`](booking-service/openapi.yaml) (OpenAPI 3.0.3),
+проектные решения — в [`docs/api.md`](docs/api.md), примеры запросов и
+ответов — в [`docs/examples.http`](docs/examples.http).
+
+| Метод | Путь | Назначение |
+|---|---|---|
+| GET | /api/v1/cars | Список с пагинацией (`page`, `limit`) и фильтрами (`status`, `brand`, `max_price_per_minute`) |
+| POST | /api/v1/cars | Добавить машину |
+| GET | /api/v1/cars/{id} | Получить машину |
+| PUT | /api/v1/cars/{id} | Полностью заменить данные |
+| PATCH | /api/v1/cars/{id} | Частично обновить |
+| DELETE | /api/v1/cars/{id} | Убрать из автопарка |
+
+Все ошибки — в едином формате `{"error": "...", "details": [...]}`.
