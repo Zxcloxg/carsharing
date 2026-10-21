@@ -10,10 +10,29 @@ For the full list of settings and their values, see
 https://docs.djangoproject.com/en/6.1/ref/settings/
 """
 
+import os
+from datetime import timedelta
 from pathlib import Path
+
+from django.core.exceptions import ImproperlyConfigured
+from dotenv import load_dotenv
 
 # Build paths inside the project like this: BASE_DIR / 'subdir'.
 BASE_DIR = Path(__file__).resolve().parent.parent
+
+# Переменные окружения можно положить в booking-service/.env (шаблон — .env.example).
+# Уже заданные в окружении переменные имеют приоритет над файлом.
+load_dotenv(BASE_DIR / ".env")
+
+
+def env_required(name):
+    """Значение обязательной переменной окружения; без неё сервис не стартует."""
+    value = os.environ.get(name)
+    if not value:
+        raise ImproperlyConfigured(
+            f"Environment variable {name} is not set. Copy .env.example to .env and fill it in."
+        )
+    return value
 
 
 # Quick-start development settings - unsuitable for production
@@ -40,6 +59,7 @@ INSTALLED_APPS = [
     'rest_framework',
     'health',
     'fleet',
+    'accounts',
 ]
 
 MIDDLEWARE = [
@@ -50,6 +70,8 @@ MIDDLEWARE = [
     'django.contrib.auth.middleware.AuthenticationMiddleware',
     'django.contrib.messages.middleware.MessageMiddleware',
     'django.middleware.clickjacking.XFrameOptionsMiddleware',
+    # Ошибки под /api/ вне маршрутов DRF (неизвестный URL, исключение) — тоже JSON в едином формате.
+    'config.middleware.ApiErrorMiddleware',
 ]
 
 ROOT_URLCONF = 'config.urls'
@@ -75,16 +97,35 @@ WSGI_APPLICATION = 'config.wsgi.application'
 # Database
 # https://docs.djangoproject.com/en/6.1/ref/settings/#databases
 
+# Параметры подключения к PostgreSQL задаются только через переменные окружения.
+
 DATABASES = {
     'default': {
-        'ENGINE': 'django.db.backends.sqlite3',
-        'NAME': BASE_DIR / 'db.sqlite3',
+        'ENGINE': 'django.db.backends.postgresql',
+        'HOST': env_required('DB_HOST'),
+        'PORT': env_required('DB_PORT'),
+        'NAME': env_required('DB_NAME'),
+        'USER': env_required('DB_USER'),
+        'PASSWORD': env_required('DB_PASSWORD'),
+        'CONN_MAX_AGE': 60,
+        'CONN_HEALTH_CHECKS': True,
+        'OPTIONS': {'connect_timeout': 5},
     }
 }
 
 
-# Password validation
-# https://docs.djangoproject.com/en/6.1/ref/settings/#auth-password-validators
+# Password hashing and validation
+# https://docs.djangoproject.com/en/6.1/topics/auth/passwords/
+
+# Первый хэшер используется для новых паролей: Argon2id (победитель Password
+# Hashing Competition, устойчив к перебору на GPU за счёт затрат памяти).
+# Остальные нужны только для проверки старых хэшей; при входе такой хэш
+# автоматически пересчитывается в Argon2id.
+PASSWORD_HASHERS = [
+    'django.contrib.auth.hashers.Argon2PasswordHasher',
+    'django.contrib.auth.hashers.PBKDF2PasswordHasher',
+    'django.contrib.auth.hashers.PBKDF2SHA1PasswordHasher',
+]
 
 AUTH_PASSWORD_VALIDATORS = [
     {
@@ -92,6 +133,7 @@ AUTH_PASSWORD_VALIDATORS = [
     },
     {
         'NAME': 'django.contrib.auth.password_validation.MinimumLengthValidator',
+        'OPTIONS': {'min_length': 8},
     },
     {
         'NAME': 'django.contrib.auth.password_validation.CommonPasswordValidator',
@@ -131,9 +173,49 @@ MAILERS = {
 
 
 # REST framework
-# Единый формат ошибок для всего API: {"error": ..., "details": [...]}
+# Единый формат ошибок для всего API: {"error": {"code", "message", "details"}}.
+# Аутентификация по JWT подключена ко всем маршрутам; права проверяют
+# декораторы require_auth / require_role (accounts/permissions.py).
 
 REST_FRAMEWORK = {
-    'EXCEPTION_HANDLER': 'fleet.errors.api_exception_handler',
+    'EXCEPTION_HANDLER': 'config.exceptions.api_exception_handler',
+    'DEFAULT_AUTHENTICATION_CLASSES': ['accounts.authentication.JWTAuthentication'],
+    'DEFAULT_PERMISSION_CLASSES': [],
     'UNAUTHENTICATED_USER': None,
+    'DEFAULT_THROTTLE_RATES': {
+        # Защита от перебора паролей и массовой регистрации: попыток в минуту с одного IP.
+        'login': os.environ.get('LOGIN_THROTTLE_RATE', '10/min'),
+        'register': os.environ.get('REGISTER_THROTTLE_RATE', '10/min'),
+    },
+}
+
+
+# JWT
+# Секрет подписи — только из окружения; без него сервис не стартует.
+
+JWT_SECRET = env_required('JWT_SECRET')
+if len(JWT_SECRET) < 32:
+    raise ImproperlyConfigured('JWT_SECRET must be at least 32 characters long')
+JWT_ALGORITHM = 'HS256'
+JWT_ISSUER = 'booking-service'
+JWT_ACCESS_TTL = timedelta(minutes=int(os.environ.get('JWT_ACCESS_TTL_MINUTES', '60')))
+
+
+# Logging
+# Сообщения о подключении к БД и работе сервиса — в консоль.
+
+LOGGING = {
+    'version': 1,
+    'disable_existing_loggers': False,
+    'formatters': {
+        'plain': {'format': '[{asctime}] {levelname} {name}: {message}', 'style': '{'},
+    },
+    'handlers': {
+        'console': {'class': 'logging.StreamHandler', 'formatter': 'plain'},
+    },
+    'loggers': {
+        'config': {'handlers': ['console'], 'level': 'INFO'},
+        'fleet': {'handlers': ['console'], 'level': 'INFO'},
+        'accounts': {'handlers': ['console'], 'level': 'INFO'},
+    },
 }

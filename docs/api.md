@@ -79,27 +79,33 @@ HTTP-метод.
 выражение госномера. Некорректный запрос не доходит до слоя хранения и
 никогда не превращается в 500.
 
-Любая ошибка API имеет одинаковую форму:
+Любая ошибка API имеет одинаковую форму (с ПР4 — с машиночитаемым кодом):
 
 ```json
 {
-  "error": "Validation failed",
-  "details": [
-    {"field": "plate", "message": "This value does not match the required pattern."},
-    {"field": "brand", "message": "This field is required."}
-  ]
+  "error": {
+    "code": "validation_error",
+    "message": "Validation failed",
+    "details": [
+      {"field": "plate", "message": "This value does not match the required pattern."},
+      {"field": "brand", "message": "This field is required."}
+    ]
+  }
 }
 ```
 
-- `error` — краткое человекочитаемое сообщение;
+- `code` — стабильный машиночитаемый код (`validation_error`, `car_not_found`,
+  `plate_already_used`, `not_authenticated`, `permission_denied`, …);
+- `message` — краткое человекочитаемое сообщение;
 - `details` — список уточнений (пустой, если уточнять нечего); для ошибок
   валидации в нём по одному элементу на каждое проблемное поле.
 
-Единство формата обеспечивает обработчик
-[`fleet/errors.py:api_exception_handler`](../booking-service/fleet/errors.py) —
+Единство формата обеспечивает глобальный обработчик
+[`config/exceptions.py:api_exception_handler`](../booking-service/config/exceptions.py) —
 он подключён в `REST_FRAMEWORK["EXCEPTION_HANDLER"]` и приводит к этому виду
-как ошибки DRF (400/404/405), так и доменные исключения (`CarNotFound`,
-`PlateAlreadyUsed`).
+ошибки DRF (400/401/403/404/405/415/429), доменные исключения (`CarNotFound`,
+`PlateAlreadyUsed`, …) и необработанные исключения (500 без стектрейса).
+Полная таблица кодов — в [`auth.md`](auth.md#6-единый-формат-ошибок).
 
 ## 5. Архитектура: слои
 
@@ -112,13 +118,13 @@ HTTP-запрос
    ├─ fleet/views.py         слой маршрутов: разобрать, провалидировать, отдать код ответа
    ├─ fleet/serializers.py   схемы валидации (DTO) — правила для входных данных
    ├─ fleet/services.py      бизнес-логика: уникальность номера, фильтры, пагинация
-   ├─ fleet/repository.py    хранение: сейчас потокобезопасный словарь в памяти
-   └─ fleet/errors.py        доменные исключения и единый формат ошибок
+   ├─ fleet/repositories/    хранение (PostgreSQL с ПР3), по модулю на сущность
+   └─ fleet/errors.py        доменные исключения
 ```
 
-Хранение по условию ПР2 временное (в памяти). Весь остальной код обращается
-к нему только через интерфейс репозитория, поэтому переход на PostgreSQL в
-ПР3 затронет один файл — `repository.py`.
+В ПР2 хранение было временным (в памяти); остальной код обращался к нему
+только через интерфейс репозитория, поэтому переход на PostgreSQL в ПР3 не
+затронул ни маршруты, ни бизнес-логику.
 
 ## 6. Проверка
 
@@ -127,8 +133,45 @@ cd booking-service
 python -m venv .venv && source .venv/Scripts/activate   # Linux/macOS: source .venv/bin/activate
 pip install -r requirements.txt
 python manage.py runserver 8010      # API на http://localhost:8010
-python manage.py test fleet          # 13 автотестов: CRUD, валидация, пагинация, фильтры
+python manage.py test fleet accounts # автотесты: CRUD, валидация, пагинация, фильтры, доступ
 ```
 
 Все примеры в [`examples.http`](examples.http) — реальные ответы запущенного
 сервиса, снятые через `curl`.
+
+## 7. Ресурсы, добавленные в ПР3
+
+Вместе с полной схемой базы данных ([`database.md`](database.md)) API получил
+ресурсы клиентов, водительских удостоверений, броней и платежей. Контракт
+ресурса `Car` не изменился: марка и модель по-прежнему передаются строками,
+хотя в базе лежат в справочнике `car_models`.
+
+| Метод | Путь | Назначение |
+|---|---|---|
+| GET | `/api/v1/cars/{id}/status-history` | Журнал смены статусов машины |
+| GET, POST | `/api/v1/customers` | Список и регистрация клиентов |
+| GET, PATCH | `/api/v1/customers/{id}` | Клиент; блокировка оператором |
+| GET, POST | `/api/v1/customers/{id}/driver-licenses` | Заявки на проверку ВУ |
+| GET, PATCH | `/api/v1/driver-licenses/{id}` | Заявка; решение оператора |
+| GET, POST | `/api/v1/bookings` | Список броней; бронирование (403, если ВУ не подтверждено) |
+| GET, PATCH | `/api/v1/bookings/{id}` | Бронь; завершение с оплатой или отмена |
+| GET | `/api/v1/bookings/{id}/payments` | Платежи по аренде |
+
+## 8. Аутентификация и роли (ПР4)
+
+С ПР4 изменение данных доступно только с токеном JWT
+(`Authorization: Bearer <token>`), а права зависят от роли — `customer`,
+`operator` или `admin`. Каталог машин (`GET /api/v1/cars`, `GET /api/v1/cars/{id}`)
+остаётся публичным.
+
+| Метод | Путь | Назначение |
+|---|---|---|
+| POST | `/api/v1/auth/register` | Регистрация (роль всегда `customer`) |
+| POST | `/api/v1/auth/login` | Вход: email + пароль → access-токен |
+| GET | `/api/v1/auth/me` | Текущий пользователь |
+| GET | `/api/v1/users` | Учётные записи (только `admin`) |
+| GET, PATCH | `/api/v1/users/{id}` | Смена роли и блокировка (только `admin`) |
+
+Матрица прав, устройство проверки токена и полная таблица кодов ошибок — в
+[`auth.md`](auth.md); протокол проверки на реальных запросах — в
+[`auth-check.md`](auth-check.md).

@@ -4,17 +4,37 @@ info:
   description: |
     Публичный REST API ядра каршеринга. В ПР2 спроектирован и реализован
     ресурс «автомобиль» (Car) — основная сущность предметной области.
+    В ПР3 данные хранятся в PostgreSQL (10 таблиц ядра) и добавлены ресурсы
+    «клиент» (Customer), «водительское удостоверение» (DriverLicense),
+    «бронь» (Booking) и «платёж» (Payment). Бронирование и завершение аренды
+    выполняются транзакционно; арендовать машину может только клиент с
+    подтверждённым оператором удостоверением.
+
+    В ПР4 добавлены регистрация и вход (JWT), роли customer / operator /
+    admin и проверка прав владельца записи. Изменяющие маршруты требуют
+    заголовок Authorization: Bearer <access_token>; без токена — 401, без
+    нужной роли или к чужой записи — 403. Публичны только /health, каталог
+    машин (GET /api/v1/cars, GET /api/v1/cars/{id}), регистрация и вход.
 
     Все ошибки возвращаются в едином формате:
-    {"error": "...", "details": [{"field": "...", "message": "..."}]}
-  version: 1.0.0
+    {"error": {"code": "...", "message": "...", "details": [{"field": "...", "message": "..."}]}}
+  version: 1.3.0
 servers:
   - url: http://localhost:8010
     description: Локальный запуск
 
+security:
+  - bearerAuth: []
+
 tags:
+  - name: auth
+    description: Регистрация, вход и управление учётными записями
   - name: cars
     description: Автопарк
+  - name: customers
+    description: Клиенты и верификация водительских удостоверений
+  - name: bookings
+    description: Брони, аренды и платежи
   - name: service
     description: Служебные эндпоинты
 
@@ -24,6 +44,7 @@ paths:
       tags: [service]
       summary: Проверка живости сервиса
       operationId: health
+      security: []
       responses:
         "200":
           description: Сервис работает
@@ -37,11 +58,168 @@ paths:
                   framework: { type: string, example: django }
                   time: { type: string, format: date-time }
 
+  /api/v1/auth/register:
+    post:
+      tags: [auth]
+      summary: Регистрация пользователя (роль всегда customer)
+      operationId: register
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/RegisterInput" }
+      responses:
+        "201":
+          description: Учётная запись создана; пароль сохранён только в виде хэша Argon2id
+          headers:
+            Location: { schema: { type: string }, description: Путь учётной записи }
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/User" }
+        "400":
+          $ref: "#/components/responses/ValidationError"
+        "409":
+          description: Email уже зарегистрирован (без учёта регистра)
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+              example:
+                error:
+                  code: email_taken
+                  message: User with this email already exists
+                  details:
+                    - field: email
+                      message: Email user@example.kz is already registered
+        "429":
+          $ref: "#/components/responses/Throttled"
+
+  /api/v1/auth/login:
+    post:
+      tags: [auth]
+      summary: Вход — обмен email и пароля на access-токен JWT
+      operationId: login
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/LoginInput" }
+      responses:
+        "200":
+          description: Пароль верный — выдан токен
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/TokenResponse" }
+        "400":
+          $ref: "#/components/responses/ValidationError"
+        "401":
+          description: Неверный email или пароль (ответ одинаковый для обоих случаев)
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+              example:
+                error: { code: invalid_credentials, message: Invalid email or password, details: [] }
+        "403":
+          description: Учётная запись заблокирована
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+              example:
+                error: { code: account_disabled, message: Account is disabled, details: [] }
+        "429":
+          $ref: "#/components/responses/Throttled"
+
+  /api/v1/auth/me:
+    get:
+      tags: [auth]
+      summary: Текущий пользователь по токену
+      operationId: me
+      responses:
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "200":
+          description: Учётная запись владельца токена
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/User" }
+
+  /api/v1/users:
+    get:
+      tags: [auth]
+      summary: Список учётных записей (только admin)
+      operationId: listUsers
+      parameters:
+        - { name: page, in: query, schema: { type: integer, minimum: 1, default: 1 } }
+        - { name: limit, in: query, schema: { type: integer, minimum: 1, maximum: 100, default: 10 } }
+        - { name: role, in: query, schema: { type: string, enum: [customer, operator, admin] } }
+      responses:
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "200":
+          description: Страница учётных записей
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/UserPage" }
+        "400":
+          $ref: "#/components/responses/ValidationError"
+
+  /api/v1/users/{id}:
+    parameters:
+      - { name: id, in: path, required: true, schema: { type: string, format: uuid } }
+    get:
+      tags: [auth]
+      summary: Учётная запись (только admin)
+      operationId: getUser
+      responses:
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "200":
+          description: Учётная запись
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/User" }
+        "404":
+          $ref: "#/components/responses/NotFound"
+    patch:
+      tags: [auth]
+      summary: Сменить роль или заблокировать учётную запись (только admin)
+      operationId: updateUser
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/UserPatch" }
+      responses:
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "200":
+          description: Учётная запись обновлена
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/User" }
+        "400":
+          $ref: "#/components/responses/ValidationError"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "409":
+          description: Администратор не может изменить собственную роль или заблокировать себя
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+
   /api/v1/cars:
     get:
       tags: [cars]
       summary: Список автомобилей с пагинацией и фильтрами
       operationId: listCars
+      security: []
       parameters:
         - name: page
           in: query
@@ -83,6 +261,10 @@ paths:
           application/json:
             schema: { $ref: "#/components/schemas/CarInput" }
       responses:
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
         "201":
           description: Автомобиль создан
           headers:
@@ -108,6 +290,7 @@ paths:
       tags: [cars]
       summary: Получить автомобиль по идентификатору
       operationId: getCar
+      security: []
       responses:
         "200":
           description: Автомобиль найден
@@ -126,6 +309,10 @@ paths:
           application/json:
             schema: { $ref: "#/components/schemas/CarInput" }
       responses:
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
         "200":
           description: Автомобиль обновлён
           content:
@@ -147,6 +334,10 @@ paths:
           application/json:
             schema: { $ref: "#/components/schemas/CarPatch" }
       responses:
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
         "200":
           description: Автомобиль обновлён
           content:
@@ -163,8 +354,393 @@ paths:
       summary: Удалить автомобиль из автопарка
       operationId: deleteCar
       responses:
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
         "204":
           description: Удалён, тела ответа нет
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "409":
+          description: У машины есть брони — удалить нельзя (FK ON DELETE PROTECT)
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+
+  /api/v1/cars/{id}/status-history:
+    parameters:
+      - { name: id, in: path, required: true, schema: { type: string, format: uuid } }
+    get:
+      tags: [cars]
+      summary: Журнал смены статусов машины
+      operationId: getCarStatusHistory
+      responses:
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "200":
+          description: Записи журнала в порядке времени
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  items:
+                    type: array
+                    items: { $ref: "#/components/schemas/CarStatusChange" }
+        "404":
+          $ref: "#/components/responses/NotFound"
+
+  /api/v1/customers:
+    get:
+      tags: [customers]
+      summary: Список клиентов
+      operationId: listCustomers
+      parameters:
+        - { name: page, in: query, schema: { type: integer, minimum: 1, default: 1 } }
+        - { name: limit, in: query, schema: { type: integer, minimum: 1, maximum: 100, default: 10 } }
+        - { name: status, in: query, schema: { type: string, enum: [active, blocked] } }
+      responses:
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "200":
+          description: Страница клиентов
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/CustomerPage" }
+        "400":
+          $ref: "#/components/responses/ValidationError"
+    post:
+      tags: [customers]
+      summary: Зарегистрировать клиента
+      operationId: createCustomer
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/CustomerInput" }
+      responses:
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "201":
+          description: Клиент создан
+          headers:
+            Location: { schema: { type: string }, description: Путь созданного клиента }
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Customer" }
+        "400":
+          $ref: "#/components/responses/ValidationError"
+        "409":
+          description: Телефон или email уже зарегистрирован
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+
+  /api/v1/customers/{id}:
+    parameters:
+      - { name: id, in: path, required: true, schema: { type: string, format: uuid } }
+    get:
+      tags: [customers]
+      summary: Получить клиента
+      operationId: getCustomer
+      responses:
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "200":
+          description: Клиент
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Customer" }
+        "404":
+          $ref: "#/components/responses/NotFound"
+    patch:
+      tags: [customers]
+      summary: Заблокировать или разблокировать клиента (оператор)
+      operationId: patchCustomer
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [status]
+              properties:
+                status: { type: string, enum: [active, blocked] }
+      responses:
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "200":
+          description: Клиент обновлён
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Customer" }
+        "400":
+          $ref: "#/components/responses/ValidationError"
+        "404":
+          $ref: "#/components/responses/NotFound"
+
+  /api/v1/customers/{id}/driver-licenses:
+    parameters:
+      - { name: id, in: path, required: true, schema: { type: string, format: uuid } }
+    get:
+      tags: [customers]
+      summary: Заявки клиента на проверку ВУ
+      operationId: listCustomerLicenses
+      responses:
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "200":
+          description: Все заявки клиента в порядке подачи
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  items:
+                    type: array
+                    items: { $ref: "#/components/schemas/DriverLicense" }
+        "404":
+          $ref: "#/components/responses/NotFound"
+    post:
+      tags: [customers]
+      summary: Подать водительское удостоверение на проверку
+      operationId: submitLicense
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/DriverLicenseInput" }
+      responses:
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "201":
+          description: Заявка создана в статусе pending
+          headers:
+            Location: { schema: { type: string }, description: Путь заявки }
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/DriverLicense" }
+        "400":
+          $ref: "#/components/responses/ValidationError"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "409":
+          description: У клиента уже есть заявка на проверке или подтверждённое ВУ
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+
+  /api/v1/driver-licenses/{id}:
+    parameters:
+      - { name: id, in: path, required: true, schema: { type: string, format: uuid } }
+    get:
+      tags: [customers]
+      summary: Получить заявку на проверку ВУ
+      operationId: getLicense
+      responses:
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "200":
+          description: Заявка
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/DriverLicense" }
+        "404":
+          $ref: "#/components/responses/NotFound"
+    patch:
+      tags: [customers]
+      summary: Решение оператора по заявке
+      operationId: reviewLicense
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [status]
+              properties:
+                status: { type: string, enum: [approved, rejected] }
+                reject_reason: { type: string, minLength: 3, maxLength: 500, description: Обязательна при rejected }
+      responses:
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "200":
+          description: Заявка рассмотрена
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/DriverLicense" }
+        "400":
+          $ref: "#/components/responses/ValidationError"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "409":
+          description: Заявка уже рассмотрена или номер ВУ подтверждён у другого клиента
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+
+  /api/v1/bookings:
+    get:
+      tags: [bookings]
+      summary: Список броней с пагинацией и фильтрами
+      operationId: listBookings
+      parameters:
+        - { name: page, in: query, schema: { type: integer, minimum: 1, default: 1 } }
+        - { name: limit, in: query, schema: { type: integer, minimum: 1, maximum: 100, default: 10 } }
+        - { name: car_id, in: query, schema: { type: string, format: uuid } }
+        - { name: customer_id, in: query, schema: { type: string, format: uuid } }
+        - { name: status, in: query, schema: { type: string, enum: [active, finished, cancelled] } }
+      responses:
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "200":
+          description: Страница броней
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/BookingPage" }
+        "400":
+          $ref: "#/components/responses/ValidationError"
+    post:
+      tags: [bookings]
+      summary: Забронировать машину
+      description: |
+        Одна транзакция: блокировка строки машины (SELECT FOR UPDATE), проверка
+        статуса free, проверка клиента (подтверждённое ВУ, нет блокировки и
+        активной аренды), запись брони, перевод машины в booked и запись в
+        журнал статусов. Ошибка на любом шаге откатывает все изменения.
+      operationId: createBooking
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/BookingInput" }
+      responses:
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "201":
+          description: Бронь создана
+          headers:
+            Location: { schema: { type: string }, description: Путь созданной брони }
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Booking" }
+        "400":
+          $ref: "#/components/responses/ValidationError"
+        "403":
+          description: |
+            Клиент заблокирован или его ВУ не подтверждено (customer_cannot_rent);
+            у учётной записи клиента нет профиля арендатора (customer_profile_required);
+            клиент пытается забронировать на чужой телефон (permission_denied)
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "409":
+          description: Машина не свободна или у клиента уже есть активная аренда
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+
+  /api/v1/bookings/{id}:
+    parameters:
+      - { name: id, in: path, required: true, schema: { type: string, format: uuid } }
+    get:
+      tags: [bookings]
+      summary: Получить бронь
+      operationId: getBooking
+      responses:
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "200":
+          description: Бронь
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Booking" }
+        "404":
+          $ref: "#/components/responses/NotFound"
+    patch:
+      tags: [bookings]
+      summary: Завершить или отменить бронь
+      description: |
+        Одна транзакция над четырьмя таблицами — закрыть бронь и посчитать
+        стоимость, при завершении записать платёж, освободить машину и
+        записать смену статуса в журнал.
+      operationId: closeBooking
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [status]
+              properties:
+                status: { type: string, enum: [finished, cancelled] }
+      responses:
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "200":
+          description: Бронь закрыта
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Booking" }
+        "400":
+          $ref: "#/components/responses/ValidationError"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "409":
+          description: Бронь уже закрыта
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+
+  /api/v1/bookings/{id}/payments:
+    parameters:
+      - { name: id, in: path, required: true, schema: { type: string, format: uuid } }
+    get:
+      tags: [bookings]
+      summary: Платежи по аренде
+      operationId: listBookingPayments
+      responses:
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "200":
+          description: Платежи в порядке создания
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  items:
+                    type: array
+                    items: { $ref: "#/components/schemas/Payment" }
         "404":
           $ref: "#/components/responses/NotFound"
 
@@ -239,22 +815,187 @@ components:
         limit: { type: integer, example: 10 }
         total: { type: integer, description: Всего записей после фильтрации, example: 3 }
         pages: { type: integer, description: Всего страниц, example: 1 }
+    BookingInput:
+      type: object
+      required: [car_id]
+      properties:
+        car_id: { type: string, format: uuid }
+        customer_phone:
+          type: string
+          pattern: '^\+?[0-9]{10,15}$'
+          description: |
+            Телефон клиента. Обязателен, когда бронирует персонал (operator, admin)
+            за клиента; клиент бронирует на себя и может поле не указывать.
+          example: "+77011234567"
+    Booking:
+      type: object
+      required: [id, car_id, customer_id, customer_phone, status, price_per_minute, started_at]
+      properties:
+        id: { type: string, format: uuid, readOnly: true }
+        car_id: { type: string, format: uuid }
+        customer_id: { type: string, format: uuid }
+        customer_phone: { type: string, example: "+77011234567" }
+        status: { type: string, enum: [active, finished, cancelled] }
+        price_per_minute: { type: number, description: Тариф, зафиксированный в момент брони }
+        started_at: { type: string, format: date-time }
+        finished_at: { type: string, format: date-time, nullable: true }
+        total_cost: { type: number, nullable: true, description: Стоимость, считается при завершении }
+    BookingPage:
+      type: object
+      required: [items, page, limit, total, pages]
+      properties:
+        items:
+          type: array
+          items: { $ref: "#/components/schemas/Booking" }
+        page: { type: integer }
+        limit: { type: integer }
+        total: { type: integer }
+        pages: { type: integer }
+    CarStatusChange:
+      type: object
+      properties:
+        old_status: { type: string, nullable: true, description: null — машина только добавлена }
+        new_status: { type: string, enum: [free, booked, in_rent, service] }
+        booking_id: { type: string, format: uuid, nullable: true }
+        changed_at: { type: string, format: date-time }
+    CustomerInput:
+      type: object
+      required: [phone, full_name, birth_date]
+      properties:
+        phone: { type: string, pattern: '^\+?[0-9]{10,15}$', example: "+77011234567" }
+        email: { type: string, format: email, nullable: true, example: aigerim@example.kz }
+        full_name: { type: string, minLength: 2, maxLength: 150, example: Айгерим Сапарова }
+        birth_date: { type: string, format: date, description: Клиенту не меньше 18 лет, example: "1995-04-12" }
+    Customer:
+      allOf:
+        - $ref: "#/components/schemas/CustomerInput"
+        - type: object
+          properties:
+            id: { type: string, format: uuid, readOnly: true }
+            status: { type: string, enum: [active, blocked] }
+            has_valid_license:
+              type: boolean
+              description: Есть подтверждённое и не просроченное ВУ — клиент допущен к аренде
+            created_at: { type: string, format: date-time, readOnly: true }
+    CustomerPage:
+      type: object
+      required: [items, page, limit, total, pages]
+      properties:
+        items:
+          type: array
+          items: { $ref: "#/components/schemas/Customer" }
+        page: { type: integer }
+        limit: { type: integer }
+        total: { type: integer }
+        pages: { type: integer }
+    DriverLicenseInput:
+      type: object
+      required: [number, categories, issued_on, expires_on]
+      properties:
+        number: { type: string, pattern: "^[A-Za-z0-9]{6,20}$", example: KZ0123456 }
+        categories: { type: string, description: Через запятую, обязательна B, example: "B,C" }
+        issued_on: { type: string, format: date, example: "2018-06-01" }
+        expires_on: { type: string, format: date, description: Позже issued_on и не в прошлом, example: "2028-06-01" }
+    DriverLicense:
+      allOf:
+        - $ref: "#/components/schemas/DriverLicenseInput"
+        - type: object
+          properties:
+            id: { type: string, format: uuid, readOnly: true }
+            customer_id: { type: string, format: uuid }
+            status: { type: string, enum: [pending, approved, rejected] }
+            reject_reason: { type: string, nullable: true }
+            submitted_at: { type: string, format: date-time }
+            reviewed_at: { type: string, format: date-time, nullable: true }
+    Payment:
+      type: object
+      properties:
+        id: { type: string, format: uuid }
+        booking_id: { type: string, format: uuid }
+        amount: { type: number, example: 260.0 }
+        status: { type: string, enum: [pending, paid, failed, refunded] }
+        provider_payment_id: { type: string, nullable: true, example: stub-3f2a9c1b7d4e8a60 }
+        created_at: { type: string, format: date-time }
+        paid_at: { type: string, format: date-time, nullable: true }
+    RegisterInput:
+      type: object
+      required: [email, password]
+      additionalProperties: false
+      properties:
+        email: { type: string, format: email, maxLength: 254, example: user@example.kz }
+        password:
+          type: string
+          format: password
+          minLength: 8
+          maxLength: 128
+          writeOnly: true
+          description: Не похож на email, не из списка распространённых, не только цифры
+          example: "Tiger#Moon2026"
+    LoginInput:
+      type: object
+      required: [email, password]
+      properties:
+        email: { type: string, format: email, example: user@example.kz }
+        password: { type: string, format: password, writeOnly: true, example: "Tiger#Moon2026" }
+    TokenResponse:
+      type: object
+      required: [access_token, token_type, expires_in, user]
+      properties:
+        access_token: { type: string, description: JWT (HS256), передаётся в заголовке Authorization }
+        token_type: { type: string, enum: [Bearer] }
+        expires_in: { type: integer, description: Срок жизни токена в секундах, example: 3600 }
+        user: { $ref: "#/components/schemas/User" }
+    User:
+      type: object
+      properties:
+        id: { type: string, format: uuid, readOnly: true }
+        email: { type: string, format: email }
+        role: { type: string, enum: [customer, operator, admin] }
+        customer_id: { type: string, format: uuid, nullable: true, description: Профиль арендатора }
+        is_active: { type: boolean }
+        created_at: { type: string, format: date-time, description: Дата регистрации }
+        last_login_at: { type: string, format: date-time, nullable: true }
+    UserPage:
+      type: object
+      required: [items, page, limit, total, pages]
+      properties:
+        items:
+          type: array
+          items: { $ref: "#/components/schemas/User" }
+        page: { type: integer }
+        limit: { type: integer }
+        total: { type: integer }
+        pages: { type: integer }
+    UserPatch:
+      type: object
+      minProperties: 1
+      properties:
+        role: { type: string, enum: [customer, operator, admin] }
+        is_active: { type: boolean }
     Error:
       type: object
-      required: [error, details]
+      required: [error]
       properties:
         error:
-          type: string
-          description: Человекочитаемое сообщение об ошибке
-          example: Validation failed
-        details:
-          type: array
-          description: Уточнения; для ошибок валидации — по одному на поле
-          items:
-            type: object
-            properties:
-              field: { type: string, example: brand }
-              message: { type: string, example: This field is required. }
+          type: object
+          required: [code, message, details]
+          properties:
+            code:
+              type: string
+              description: Машиночитаемый код ошибки (таблица кодов — docs/auth.md)
+              example: validation_error
+            message:
+              type: string
+              description: Человекочитаемое сообщение об ошибке
+              example: Validation failed
+            details:
+              type: array
+              description: Уточнения; для ошибок валидации — по одному на поле
+              items:
+                type: object
+                properties:
+                  field: { type: string, example: brand }
+                  message: { type: string, example: This field is required. }
   responses:
     ValidationError:
       description: Некорректные входные данные
@@ -262,27 +1003,76 @@ components:
         application/json:
           schema: { $ref: "#/components/schemas/Error" }
           example:
-            error: Validation failed
-            details:
-              - field: brand
-                message: This field is required.
+            error:
+              code: validation_error
+              message: Validation failed
+              details:
+                - field: brand
+                  message: This field is required.
     NotFound:
-      description: Автомобиль не найден
+      description: Ресурс не найден
       content:
         application/json:
           schema: { $ref: "#/components/schemas/Error" }
           example:
-            error: Car not found
-            details:
-              - field: id
-                message: No car with id 00000000-0000-0000-0000-000000000000
+            error:
+              code: car_not_found
+              message: Car not found
+              details:
+                - field: id
+                  message: No car with id 00000000-0000-0000-0000-000000000000
     Conflict:
       description: Автомобиль с таким госномером уже существует
       content:
         application/json:
           schema: { $ref: "#/components/schemas/Error" }
           example:
-            error: Car with this plate already exists
-            details:
-              - field: plate
-                message: Plate 123ABC02 is already registered
+            error:
+              code: plate_already_used
+              message: Car with this plate already exists
+              details:
+                - field: plate
+                  message: Plate 123ABC02 is already registered
+    Unauthorized:
+      description: |
+        Нет токена (not_authenticated), токен испорчен или подписан чужим ключом
+        (invalid_token), истёк (token_expired) или учётная запись заблокирована
+        (account_disabled)
+      headers:
+        WWW-Authenticate: { schema: { type: string, example: 'Bearer realm="api"' } }
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/Error" }
+          example:
+            error:
+              code: not_authenticated
+              message: Authentication credentials were not provided.
+              details: []
+    Forbidden:
+      description: Пользователь аутентифицирован, но его роль не допускает действие или запись чужая
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/Error" }
+          example:
+            error:
+              code: permission_denied
+              message: You do not have permission to perform this action
+              details:
+                - field: role
+                  message: "Allowed roles: admin; your role: customer"
+    Throttled:
+      description: Слишком много попыток с одного IP (10 в минуту)
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/Error" }
+          example:
+            error:
+              code: throttled
+              message: Request was throttled. Expected available in 42 seconds.
+              details: []
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+      description: Access-токен из POST /api/v1/auth/login, срок жизни 60 минут

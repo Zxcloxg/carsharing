@@ -1,0 +1,150 @@
+// ER-диаграмма booking-service. Открывается на https://dbdiagram.io
+// Все колонки NOT NULL, кроме помеченных [null].
+
+// --- клиенты ------------------------------------------------------------------
+Table customers [note: 'Клиенты (арендаторы)'] {
+  id uuid [pk]
+  phone varchar(16) [not null, unique, note: 'CHECK phone ~ ^\+?[0-9]{10,15}$']
+  email varchar(254) [null, unique]
+  full_name varchar(150) [not null]
+  birth_date date [not null, note: 'CHECK >= 1900-01-01; возраст >= 18 проверяет API']
+  status varchar(10) [not null, default: 'active', note: 'active | blocked']
+  created_at timestamptz [not null]
+  updated_at timestamptz [not null]
+}
+
+Table driver_licenses [note: 'Водительские удостоверения и их верификация оператором'] {
+  id uuid [pk]
+  customer_id uuid [not null, ref: > customers.id, note: 'ON DELETE CASCADE']
+  number varchar(20) [not null]
+  categories varchar(30) [not null, note: 'CHECK содержит категорию B']
+  issued_on date [not null]
+  expires_on date [not null, note: 'CHECK expires_on > issued_on']
+  status varchar(10) [not null, default: 'pending', note: 'pending | approved | rejected']
+  reject_reason text [null, note: 'обязательна при rejected']
+  submitted_at timestamptz [not null]
+  reviewed_at timestamptz [null, note: 'NULL <=> status = pending']
+  reviewed_by_id integer [null, ref: > auth_user.id, note: 'ON DELETE SET NULL']
+
+  indexes {
+    customer_id [unique, name: 'driver_licenses_one_live_per_customer', note: 'WHERE status IN (pending, approved)']
+    number [unique, name: 'driver_licenses_number_approved_uniq', note: 'WHERE status = approved']
+    submitted_at [name: 'driver_licenses_pending_idx', note: 'WHERE status = pending — очередь оператора']
+  }
+}
+
+Table auth_user [note: 'Операторы — встроенная таблица пользователей Django admin'] {
+  id integer [pk]
+  username varchar(150) [not null, unique]
+}
+
+// --- автопарк ----------------------------------------------------------------
+Table car_models [note: 'Справочник моделей автомобилей'] {
+  id smallint [pk, increment]
+  brand varchar(50) [not null]
+  model varchar(50) [not null]
+  body_type varchar(20) [null]
+  seats smallint [null, note: 'CHECK 2..9']
+  fuel_type varchar(10) [null, note: 'petrol | diesel | hybrid | electric']
+
+  indexes {
+    (brand, model) [unique, name: 'car_models_brand_model_uniq', note: 'по lower(brand), lower(model)']
+  }
+}
+
+Table cars [note: 'Автомобили автопарка'] {
+  id uuid [pk]
+  car_model_id smallint [not null, ref: > car_models.id, note: 'ON DELETE PROTECT']
+  plate varchar(10) [not null, unique, note: 'Госномер']
+  year smallint [not null, note: 'CHECK year >= 1990']
+  color varchar(30) [null]
+  price_per_minute numeric(8,2) [not null, note: 'CHECK > 0, тенге/мин']
+  fuel_level "double precision" [not null, default: 1.0, note: 'CHECK 0..1']
+  status varchar(10) [not null, default: 'free', note: 'free | booked | in_rent | service']
+  created_at timestamptz [not null]
+  updated_at timestamptz [not null]
+
+  indexes {
+    (status, created_at) [name: 'cars_status_created_idx', note: 'GET /api/v1/cars?status=free (миграция 0002)']
+  }
+}
+
+Table features [note: 'Справочник опций автомобиля'] {
+  id smallint [pk, increment]
+  code varchar(30) [not null, unique]
+  name varchar(100) [not null]
+}
+
+Table car_features [note: 'Опции конкретных машин — связь N:N cars <-> features'] {
+  id bigint [pk, increment]
+  car_id uuid [not null, ref: > cars.id, note: 'ON DELETE CASCADE']
+  feature_id smallint [not null, ref: > features.id, note: 'ON DELETE PROTECT']
+  added_at timestamptz [not null]
+
+  indexes {
+    (car_id, feature_id) [unique, name: 'car_features_car_feature_uniq']
+  }
+}
+
+// --- аренда и деньги -----------------------------------------------------------
+Table bookings [note: 'Брони и аренды машин'] {
+  id uuid [pk]
+  car_id uuid [not null, ref: > cars.id, note: 'ON DELETE PROTECT']
+  customer_id uuid [not null, ref: > customers.id, note: 'ON DELETE PROTECT']
+  status varchar(10) [not null, default: 'active', note: 'active | finished | cancelled']
+  price_per_minute numeric(8,2) [not null, note: 'Тариф на момент брони, CHECK > 0']
+  started_at timestamptz [not null]
+  finished_at timestamptz [null, note: 'CHECK >= started_at; NULL <=> status = active']
+  total_cost numeric(10,2) [null, note: 'CHECK >= 0']
+
+  indexes {
+    car_id [unique, name: 'bookings_one_active_per_car', note: 'WHERE status = active']
+    customer_id [unique, name: 'bookings_one_active_per_customer', note: 'WHERE status = active']
+    (customer_id, started_at) [name: 'bookings_customer_started_idx', note: 'история аренд клиента']
+  }
+}
+
+Table payments [note: 'Платежи за аренду'] {
+  id uuid [pk]
+  booking_id uuid [not null, ref: > bookings.id, note: 'ON DELETE PROTECT']
+  amount numeric(10,2) [not null, note: 'CHECK > 0']
+  status varchar(10) [not null, default: 'pending', note: 'pending | paid | failed | refunded']
+  provider_payment_id varchar(64) [null, unique]
+  created_at timestamptz [not null]
+  paid_at timestamptz [null, note: 'NOT NULL <=> status in (paid, refunded)']
+
+  indexes {
+    booking_id [unique, name: 'payments_one_paid_per_booking', note: 'WHERE status = paid']
+  }
+}
+
+// --- эксплуатация --------------------------------------------------------------
+Table car_status_history [note: 'Журнал смены статусов машин'] {
+  id bigint [pk, increment]
+  car_id uuid [not null, ref: > cars.id, note: 'ON DELETE CASCADE']
+  old_status varchar(10) [null, note: 'NULL — машина только добавлена; CHECK old <> new']
+  new_status varchar(10) [not null]
+  booking_id uuid [null, ref: > bookings.id, note: 'ON DELETE SET NULL']
+  changed_at timestamptz [not null]
+
+  indexes {
+    (car_id, changed_at) [name: 'car_status_history_car_idx']
+  }
+}
+
+Table incidents [note: 'Инциденты с машинами, разбираются оператором'] {
+  id uuid [pk]
+  car_id uuid [not null, ref: > cars.id, note: 'ON DELETE PROTECT']
+  booking_id uuid [null, ref: > bookings.id, note: 'ON DELETE PROTECT']
+  customer_id uuid [null, ref: > customers.id, note: 'ON DELETE PROTECT']
+  kind varchar(10) [not null, note: 'damage | accident | dirty | low_fuel | other']
+  description text [not null]
+  status varchar(10) [not null, default: 'open', note: 'open | resolved']
+  created_at timestamptz [not null]
+  resolved_at timestamptz [null, note: 'NULL <=> status = open']
+  resolved_by_id integer [null, ref: > auth_user.id, note: 'ON DELETE SET NULL']
+
+  indexes {
+    created_at [name: 'incidents_open_idx', note: 'WHERE status = open — панель оператора']
+  }
+}

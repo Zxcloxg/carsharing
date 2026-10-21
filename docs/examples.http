@@ -1,4 +1,5 @@
-### Примеры запросов и ответов: ресурс /api/v1/cars (ПР2)
+### Примеры запросов и ответов: /api/v1/cars (ПР2), клиенты, брони и платежи (ПР3),
+### аутентификация, роли и единый формат ошибок (ПР4)
 #
 # Файл в формате .http: открывается в VS Code (REST Client), JetBrains IDE,
 # либо выполняется вручную через curl (команда приведена перед каждым блоком).
@@ -7,6 +8,28 @@
 # Запуск сервиса:  cd booking-service && python manage.py runserver 8010
 
 @host = http://localhost:8010
+
+# С ПР4 изменяющие запросы требуют токен. Сначала выполните два запроса входа
+# ниже: REST Client подставит токены в переменные admin_token и customer_token.
+# Для curl добавьте -H "Authorization: Bearer <access_token>".
+# Ответы с ошибками в разделах ПР2–ПР3 приведены к формату ПР4.
+
+# @name adminLogin
+POST {{host}}/api/v1/auth/login
+Content-Type: application/json
+
+{"email": "admin@carsharing.kz", "password": "Steppe#Falcon2026"}
+
+###
+# @name customerLogin
+POST {{host}}/api/v1/auth/login
+Content-Type: application/json
+
+{"email": "aigerim@example.kz", "password": "Tulip#Morning2026"}
+
+###
+@admin_token = {{adminLogin.response.body.$.access_token}}
+@customer_token = {{customerLogin.response.body.$.access_token}}
 
 ###############################################################################
 # 0. Проверка живости
@@ -75,6 +98,7 @@ GET {{host}}/api/v1/cars?brand=kia&max_price_per_minute=70
 #   -d '{"plate":"555XYZ02","brand":"Toyota","model":"Camry","year":2024,"color":"black","price_per_minute":120,"fuel_level":0.95}'
 ###############################################################################
 POST {{host}}/api/v1/cars
+Authorization: Bearer {{admin_token}}
 Content-Type: application/json
 
 {
@@ -117,6 +141,7 @@ GET {{host}}/api/v1/cars/037324ab-f820-4d62-be1b-e06b9bc38da6
 # curl -s -X PUT http://localhost:8010/api/v1/cars/037324ab-... -H "Content-Type: application/json" -d '{...}'
 ###############################################################################
 PUT {{host}}/api/v1/cars/037324ab-f820-4d62-be1b-e06b9bc38da6
+Authorization: Bearer {{admin_token}}
 Content-Type: application/json
 
 {
@@ -145,6 +170,7 @@ Content-Type: application/json
 #   -d '{"status":"service","fuel_level":0.1}'
 ###############################################################################
 PATCH {{host}}/api/v1/cars/037324ab-f820-4d62-be1b-e06b9bc38da6
+Authorization: Bearer {{admin_token}}
 Content-Type: application/json
 
 {
@@ -166,6 +192,7 @@ Content-Type: application/json
 # curl -s -X DELETE http://localhost:8010/api/v1/cars/037324ab-f820-4d62-be1b-e06b9bc38da6
 ###############################################################################
 DELETE {{host}}/api/v1/cars/037324ab-f820-4d62-be1b-e06b9bc38da6
+Authorization: Bearer {{admin_token}}
 
 # HTTP/1.1 204 No Content
 # (тела ответа нет)
@@ -177,10 +204,13 @@ GET {{host}}/api/v1/cars/037324ab-f820-4d62-be1b-e06b9bc38da6
 
 # HTTP/1.1 404 Not Found
 # {
-#   "error": "Car not found",
-#   "details": [
-#     {"field": "id", "message": "No car with id 037324ab-f820-4d62-be1b-e06b9bc38da6"}
-#   ]
+#   "error": {
+#     "code": "car_not_found",
+#     "message": "Car not found",
+#     "details": [
+#       {"field": "id", "message": "No car with id 037324ab-f820-4d62-be1b-e06b9bc38da6"}
+#     ]
+#   }
 # }
 
 ###############################################################################
@@ -190,6 +220,7 @@ GET {{host}}/api/v1/cars/037324ab-f820-4d62-be1b-e06b9bc38da6
 #   -d '{"plate":"bad!","model":"Rio","year":"recently","price_per_minute":0}'
 ###############################################################################
 POST {{host}}/api/v1/cars
+Authorization: Bearer {{admin_token}}
 Content-Type: application/json
 
 {
@@ -201,19 +232,23 @@ Content-Type: application/json
 
 # HTTP/1.1 400 Bad Request
 # {
-#   "error": "Validation failed",
-#   "details": [
-#     {"field": "plate", "message": "This value does not match the required pattern."},
-#     {"field": "brand", "message": "This field is required."},
-#     {"field": "year", "message": "A valid integer is required."},
-#     {"field": "price_per_minute", "message": "Ensure this value is greater than or equal to 0.01."}
-#   ]
+#   "error": {
+#     "code": "validation_error",
+#     "message": "Validation failed",
+#     "details": [
+#       {"field": "plate", "message": "This value does not match the required pattern."},
+#       {"field": "brand", "message": "This field is required."},
+#       {"field": "year", "message": "A valid integer is required."},
+#       {"field": "price_per_minute", "message": "Ensure this value is greater than or equal to 0.01."}
+#     ]
+#   }
 # }
 
 ###############################################################################
 # 10. Валидация: пустое обязательное поле
 ###############################################################################
 POST {{host}}/api/v1/cars
+Authorization: Bearer {{admin_token}}
 Content-Type: application/json
 
 {
@@ -226,16 +261,20 @@ Content-Type: application/json
 
 # HTTP/1.1 400 Bad Request
 # {
-#   "error": "Validation failed",
-#   "details": [
-#     {"field": "brand", "message": "This field may not be blank."}
-#   ]
+#   "error": {
+#     "code": "validation_error",
+#     "message": "Validation failed",
+#     "details": [
+#       {"field": "brand", "message": "This field may not be blank."}
+#     ]
+#   }
 # }
 
 ###############################################################################
 # 11. Бизнес-правило: госномер уже занят -> 409
 ###############################################################################
 POST {{host}}/api/v1/cars
+Authorization: Bearer {{admin_token}}
 Content-Type: application/json
 
 {
@@ -248,10 +287,13 @@ Content-Type: application/json
 
 # HTTP/1.1 409 Conflict
 # {
-#   "error": "Car with this plate already exists",
-#   "details": [
-#     {"field": "plate", "message": "Plate 123ABC02 is already registered"}
-#   ]
+#   "error": {
+#     "code": "plate_already_used",
+#     "message": "Car with this plate already exists",
+#     "details": [
+#       {"field": "plate", "message": "Plate 123ABC02 is already registered"}
+#     ]
+#   }
 # }
 
 ###############################################################################
@@ -261,8 +303,899 @@ GET {{host}}/api/v1/cars?status=flying
 
 # HTTP/1.1 400 Bad Request
 # {
-#   "error": "Validation failed",
-#   "details": [
-#     {"field": "status", "message": "\"flying\" is not a valid choice."}
+#   "error": {
+#     "code": "validation_error",
+#     "message": "Validation failed",
+#     "details": [
+#       {"field": "status", "message": "\"flying\" is not a valid choice."}
+#     ]
+#   }
+# }
+
+
+###############################################################################
+###############################################################################
+### ПР3: полная база данных (10 таблиц), клиенты и ВУ, аренда с оплатой,
+### сохранность данных между перезапусками
+#
+# Ответы сняты 2026-10-07 с booking-service, подключённого к PostgreSQL 17.6,
+# после python manage.py migrate и seed_demo. Все запросы ПР2 (блоки 0–12)
+# повторены поверх базы и дают те же ответы; ниже — новые сценарии.
+###############################################################################
+
+###############################################################################
+# 13. Регистрация клиента
+###############################################################################
+POST {{host}}/api/v1/customers
+Authorization: Bearer {{admin_token}}
+Content-Type: application/json
+
+{"phone": "+77051234567", "full_name": "Тимур Нурланов", "birth_date": "1997-02-14", "email": "timur@example.kz"}
+
+# HTTP/1.1 201 Created
+# Location: /api/v1/customers/2d91f08b-cc69-4e80-89f3-778abe640642
+# {
+#   "id": "2d91f08b-cc69-4e80-89f3-778abe640642",
+#   "phone": "+77051234567",
+#   "email": "timur@example.kz",
+#   "full_name": "Тимур Нурланов",
+#   "status": "active",
+#   "birth_date": "1997-02-14",
+#   "has_valid_license": false,
+#   "created_at": "2026-10-07T08:34:29.547576+00:00"
+# }
+
+###############################################################################
+# 14. Повторная регистрация с тем же телефоном (UNIQUE customers.phone)
+###############################################################################
+POST {{host}}/api/v1/customers
+Authorization: Bearer {{admin_token}}
+Content-Type: application/json
+
+{"phone": "+77051234567", "full_name": "Другой Клиент", "birth_date": "1990-01-01"}
+
+# HTTP/1.1 409 Conflict
+# {
+#   "error": {
+#     "code": "phone_already_used",
+#     "message": "Customer with this phone already exists",
+#     "details": [
+#       {
+#         "field": "phone",
+#         "message": "Phone +77051234567 is already registered"
+#       }
+#     ]
+#   }
+# }
+
+###############################################################################
+# 15. Регистрация с ошибками: телефон, имя, клиенту меньше 18 лет
+###############################################################################
+POST {{host}}/api/v1/customers
+Authorization: Bearer {{admin_token}}
+Content-Type: application/json
+
+{"phone": "12", "full_name": "Я", "birth_date": "2015-01-01"}
+
+# HTTP/1.1 400 Bad Request
+# {
+#   "error": {
+#     "code": "validation_error",
+#     "message": "Validation failed",
+#     "details": [
+#       {
+#         "field": "phone",
+#         "message": "This value does not match the required pattern."
+#       },
+#       {
+#         "field": "full_name",
+#         "message": "Ensure this field has at least 2 characters."
+#       },
+#       {
+#         "field": "birth_date",
+#         "message": "Customer must be at least 18 years old"
+#       }
+#     ]
+#   }
+# }
+
+###############################################################################
+# 16. Подача водительского удостоверения на проверку
+###############################################################################
+POST {{host}}/api/v1/customers/2d91f08b-cc69-4e80-89f3-778abe640642/driver-licenses
+Authorization: Bearer {{admin_token}}
+Content-Type: application/json
+
+{"number": "KZ5551234", "categories": "B", "issued_on": "2017-08-10", "expires_on": "2027-08-10"}
+
+# HTTP/1.1 201 Created
+# Location: /api/v1/driver-licenses/62785fee-5f79-421e-8813-6196c0a29b8f
+# {
+#   "id": "62785fee-5f79-421e-8813-6196c0a29b8f",
+#   "customer_id": "2d91f08b-cc69-4e80-89f3-778abe640642",
+#   "number": "KZ5551234",
+#   "categories": "B",
+#   "status": "pending",
+#   "reject_reason": null,
+#   "issued_on": "2017-08-10",
+#   "expires_on": "2027-08-10",
+#   "submitted_at": "2026-10-07T08:34:30.002425+00:00",
+#   "reviewed_at": null
+# }
+
+###############################################################################
+# 17. Вторая заявка, пока первая на проверке (частичный UNIQUE driver_licenses)
+###############################################################################
+POST {{host}}/api/v1/customers/2d91f08b-cc69-4e80-89f3-778abe640642/driver-licenses
+Authorization: Bearer {{admin_token}}
+Content-Type: application/json
+
+{"number": "KZ5559999", "categories": "B", "issued_on": "2017-08-10", "expires_on": "2027-08-10"}
+
+# HTTP/1.1 409 Conflict
+# {
+#   "error": {
+#     "code": "license_already_submitted",
+#     "message": "Driver license is already submitted",
+#     "details": [
+#       {
+#         "field": "customer_id",
+#         "message": "Customer already has a pending or approved license"
+#       }
+#     ]
+#   }
+# }
+
+###############################################################################
+# 18. Создание машины: brand/model уходят в справочник car_models
+###############################################################################
+POST {{host}}/api/v1/cars
+Authorization: Bearer {{admin_token}}
+Content-Type: application/json
+
+{"plate": "555XYZ02", "brand": "Toyota", "model": "Camry", "year": 2024, "color": "black", "price_per_minute": 120, "fuel_level": 0.95}
+
+# HTTP/1.1 201 Created
+# Location: /api/v1/cars/e744cdeb-9535-43ac-ad59-7a1e6a2096a8
+# {
+#   "plate": "555XYZ02",
+#   "brand": "Toyota",
+#   "model": "Camry",
+#   "year": 2024,
+#   "color": "black",
+#   "price_per_minute": 120.0,
+#   "fuel_level": 0.95,
+#   "status": "free",
+#   "id": "e744cdeb-9535-43ac-ad59-7a1e6a2096a8",
+#   "created_at": "2026-10-07T08:34:30.343164+00:00",
+#   "updated_at": "2026-10-07T08:34:30.343164+00:00"
+# }
+
+###############################################################################
+# 19. Бронирование до подтверждения ВУ -> 403
+###############################################################################
+POST {{host}}/api/v1/bookings
+Authorization: Bearer {{admin_token}}
+Content-Type: application/json
+
+{"car_id": "e744cdeb-9535-43ac-ad59-7a1e6a2096a8", "customer_phone": "+77051234567"}
+
+# HTTP/1.1 403 Forbidden
+# {
+#   "error": {
+#     "code": "customer_cannot_rent",
+#     "message": "Customer is not allowed to rent",
+#     "details": [
+#       {
+#         "field": "customer_phone",
+#         "message": "Driver license is not verified or expired"
+#       }
+#     ]
+#   }
+# }
+
+###############################################################################
+# 20. Оператор подтверждает удостоверение
+###############################################################################
+PATCH {{host}}/api/v1/driver-licenses/62785fee-5f79-421e-8813-6196c0a29b8f
+Authorization: Bearer {{admin_token}}
+Content-Type: application/json
+
+{"status": "approved"}
+
+# HTTP/1.1 200 OK
+# {
+#   "id": "62785fee-5f79-421e-8813-6196c0a29b8f",
+#   "customer_id": "2d91f08b-cc69-4e80-89f3-778abe640642",
+#   "number": "KZ5551234",
+#   "categories": "B",
+#   "status": "approved",
+#   "reject_reason": null,
+#   "issued_on": "2017-08-10",
+#   "expires_on": "2027-08-10",
+#   "submitted_at": "2026-10-07T08:34:30.002425+00:00",
+#   "reviewed_at": "2026-10-07T08:34:30.646883+00:00"
+# }
+
+###############################################################################
+# 21. Клиент допущен к аренде
+###############################################################################
+GET {{host}}/api/v1/customers/2d91f08b-cc69-4e80-89f3-778abe640642
+Authorization: Bearer {{admin_token}}
+
+# HTTP/1.1 200 OK
+# {
+#   "id": "2d91f08b-cc69-4e80-89f3-778abe640642",
+#   "phone": "+77051234567",
+#   "email": "timur@example.kz",
+#   "full_name": "Тимур Нурланов",
+#   "status": "active",
+#   "birth_date": "1997-02-14",
+#   "has_valid_license": true,
+#   "created_at": "2026-10-07T08:34:29.547576+00:00"
+# }
+
+###############################################################################
+# 22. Бронирование (транзакция: bookings + cars + car_status_history)
+###############################################################################
+POST {{host}}/api/v1/bookings
+Authorization: Bearer {{admin_token}}
+Content-Type: application/json
+
+{"car_id": "e744cdeb-9535-43ac-ad59-7a1e6a2096a8", "customer_phone": "+77051234567"}
+
+# HTTP/1.1 201 Created
+# Location: /api/v1/bookings/8cf7ea87-1924-4d3d-ab4c-c67a0ff2b7a4
+# {
+#   "id": "8cf7ea87-1924-4d3d-ab4c-c67a0ff2b7a4",
+#   "car_id": "e744cdeb-9535-43ac-ad59-7a1e6a2096a8",
+#   "customer_id": "2d91f08b-cc69-4e80-89f3-778abe640642",
+#   "customer_phone": "+77051234567",
+#   "status": "active",
+#   "price_per_minute": 135.0,
+#   "total_cost": null,
+#   "started_at": "2026-10-07T08:34:32.312688+00:00",
+#   "finished_at": null
+# }
+
+###############################################################################
+# 23. Та же машина другим клиентом -> 409
+###############################################################################
+POST {{host}}/api/v1/bookings
+Authorization: Bearer {{admin_token}}
+Content-Type: application/json
+
+{"car_id": "e744cdeb-9535-43ac-ad59-7a1e6a2096a8", "customer_phone": "+77027654321"}
+
+# HTTP/1.1 409 Conflict
+# {
+#   "error": {
+#     "code": "car_not_available",
+#     "message": "Car is not available for booking",
+#     "details": [
+#       {
+#         "field": "car_id",
+#         "message": "Car status is booked"
+#       }
+#     ]
+#   }
+# }
+
+###############################################################################
+# 24. Та же машина клиентом без подтверждённого ВУ -> 409 (сначала проверяется машина)
+###############################################################################
+POST {{host}}/api/v1/bookings
+Authorization: Bearer {{admin_token}}
+Content-Type: application/json
+
+{"car_id": "e744cdeb-9535-43ac-ad59-7a1e6a2096a8", "customer_phone": "+77071112233"}
+
+# HTTP/1.1 409 Conflict
+# {
+#   "error": {
+#     "code": "car_not_available",
+#     "message": "Car is not available for booking",
+#     "details": [
+#       {
+#         "field": "car_id",
+#         "message": "Car status is booked"
+#       }
+#     ]
+#   }
+# }
+
+###############################################################################
+# 25. Удаление машины с историей аренд (FK ON DELETE PROTECT)
+###############################################################################
+DELETE {{host}}/api/v1/cars/e744cdeb-9535-43ac-ad59-7a1e6a2096a8
+Authorization: Bearer {{admin_token}}
+
+# HTTP/1.1 409 Conflict
+# {
+#   "error": {
+#     "code": "car_has_bookings",
+#     "message": "Car has bookings and cannot be deleted",
+#     "details": [
+#       {
+#         "field": "id",
+#         "message": "Car e744cdeb-9535-43ac-ad59-7a1e6a2096a8 has bookings"
+#       }
+#     ]
+#   }
+# }
+
+###############################################################################
+# --- сервер остановлен и запущен заново ---
+# [2026-10-07 14:34:52,314] INFO config.db: Подключение к базе данных установлено: PostgreSQL 17.6, carsharing@localhost:5432/carsharing_full
+###############################################################################
+
+###############################################################################
+# 26. После перезапуска: машина сохранила все изменения
+###############################################################################
+GET {{host}}/api/v1/cars/e744cdeb-9535-43ac-ad59-7a1e6a2096a8
+
+# HTTP/1.1 200 OK
+# {
+#   "plate": "555XYZ02",
+#   "brand": "Toyota",
+#   "model": "Camry 70",
+#   "year": 2025,
+#   "color": "white",
+#   "price_per_minute": 135.0,
+#   "fuel_level": 0.4,
+#   "status": "booked",
+#   "id": "e744cdeb-9535-43ac-ad59-7a1e6a2096a8",
+#   "created_at": "2026-10-07T08:34:30.343164+00:00",
+#   "updated_at": "2026-10-07T08:34:32.324678+00:00"
+# }
+
+###############################################################################
+# 27. После перезапуска: бронь на месте
+###############################################################################
+GET {{host}}/api/v1/bookings/8cf7ea87-1924-4d3d-ab4c-c67a0ff2b7a4
+Authorization: Bearer {{admin_token}}
+
+# HTTP/1.1 200 OK
+# {
+#   "id": "8cf7ea87-1924-4d3d-ab4c-c67a0ff2b7a4",
+#   "car_id": "e744cdeb-9535-43ac-ad59-7a1e6a2096a8",
+#   "customer_id": "2d91f08b-cc69-4e80-89f3-778abe640642",
+#   "customer_phone": "+77051234567",
+#   "status": "active",
+#   "price_per_minute": 135.0,
+#   "total_cost": null,
+#   "started_at": "2026-10-07T08:34:32.312688+00:00",
+#   "finished_at": null
+# }
+
+###############################################################################
+# 28. Завершение аренды (транзакция: bookings + payments + cars + car_status_history)
+###############################################################################
+PATCH {{host}}/api/v1/bookings/8cf7ea87-1924-4d3d-ab4c-c67a0ff2b7a4
+Authorization: Bearer {{admin_token}}
+Content-Type: application/json
+
+{"status": "finished"}
+
+# HTTP/1.1 200 OK
+# {
+#   "id": "8cf7ea87-1924-4d3d-ab4c-c67a0ff2b7a4",
+#   "car_id": "e744cdeb-9535-43ac-ad59-7a1e6a2096a8",
+#   "customer_id": "2d91f08b-cc69-4e80-89f3-778abe640642",
+#   "customer_phone": "+77051234567",
+#   "status": "finished",
+#   "price_per_minute": 135.0,
+#   "total_cost": 135.0,
+#   "started_at": "2026-10-07T08:34:32.312688+00:00",
+#   "finished_at": "2026-10-07T08:35:04.538418+00:00"
+# }
+
+###############################################################################
+# 29. Платежи по аренде
+###############################################################################
+GET {{host}}/api/v1/bookings/8cf7ea87-1924-4d3d-ab4c-c67a0ff2b7a4/payments
+Authorization: Bearer {{admin_token}}
+
+# HTTP/1.1 200 OK
+# {
+#   "items": [
+#     {
+#       "id": "6179e4db-aac8-4fd1-a803-9e23faaa6df5",
+#       "booking_id": "8cf7ea87-1924-4d3d-ab4c-c67a0ff2b7a4",
+#       "amount": 135.0,
+#       "status": "paid",
+#       "provider_payment_id": "stub-f49a743ab5e0407e",
+#       "created_at": "2026-10-07T08:35:04.553422+00:00",
+#       "paid_at": "2026-10-07T08:35:04.538418+00:00"
+#     }
 #   ]
+# }
+
+###############################################################################
+# 30. Журнал статусов машины
+###############################################################################
+GET {{host}}/api/v1/cars/e744cdeb-9535-43ac-ad59-7a1e6a2096a8/status-history
+Authorization: Bearer {{admin_token}}
+
+# HTTP/1.1 200 OK
+# {
+#   "items": [
+#     {
+#       "old_status": null,
+#       "new_status": "free",
+#       "booking_id": null,
+#       "changed_at": "2026-10-07T08:34:30.349871+00:00"
+#     },
+#     {
+#       "old_status": "free",
+#       "new_status": "booked",
+#       "booking_id": "8cf7ea87-1924-4d3d-ab4c-c67a0ff2b7a4",
+#       "changed_at": "2026-10-07T08:34:32.328685+00:00"
+#     },
+#     {
+#       "old_status": "booked",
+#       "new_status": "free",
+#       "booking_id": "8cf7ea87-1924-4d3d-ab4c-c67a0ff2b7a4",
+#       "changed_at": "2026-10-07T08:35:04.595424+00:00"
+#     }
+#   ]
+# }
+
+###############################################################################
+# 31. История аренд клиента (индекс bookings_customer_started_idx)
+###############################################################################
+GET {{host}}/api/v1/bookings?customer_id=2d91f08b-cc69-4e80-89f3-778abe640642
+Authorization: Bearer {{admin_token}}
+
+# HTTP/1.1 200 OK
+# {
+#   "items": [
+#     {
+#       "id": "8cf7ea87-1924-4d3d-ab4c-c67a0ff2b7a4",
+#       "car_id": "e744cdeb-9535-43ac-ad59-7a1e6a2096a8",
+#       "customer_id": "2d91f08b-cc69-4e80-89f3-778abe640642",
+#       "customer_phone": "+77051234567",
+#       "status": "finished",
+#       "price_per_minute": 135.0,
+#       "total_cost": 135.0,
+#       "started_at": "2026-10-07T08:34:32.312688+00:00",
+#       "finished_at": "2026-10-07T08:35:04.538418+00:00"
+#     }
+#   ],
+#   "page": 1,
+#   "limit": 10,
+#   "total": 1,
+#   "pages": 1
+# }
+
+###############################################################################
+# 32. Список клиентов с пагинацией
+###############################################################################
+GET {{host}}/api/v1/customers?limit=3
+Authorization: Bearer {{admin_token}}
+
+# HTTP/1.1 200 OK
+# {
+#   "items": [
+#     {
+#       "id": "0e626f02-6cc1-4d52-970e-e4ce80ace724",
+#       "phone": "+77011234567",
+#       "email": "aigerim@example.kz",
+#       "full_name": "Айгерим Сапарова",
+#       "status": "active",
+#       "birth_date": "1995-04-12",
+#       "has_valid_license": true,
+#       "created_at": "2026-10-07T08:31:40.164112+00:00"
+#     },
+#     {
+#       "id": "c5b5823a-cf22-426f-8906-f7b5dc3813d1",
+#       "phone": "+77027654321",
+#       "email": "daniyar@example.kz",
+#       "full_name": "Данияр Ахметов",
+#       "status": "active",
+#       "birth_date": "1988-11-03",
+#       "has_valid_license": true,
+#       "created_at": "2026-10-07T08:31:40.237275+00:00"
+#     },
+#     {
+#       "id": "69c39aca-5aaa-4350-bf77-07646eea834d",
+#       "phone": "+77071112233",
+#       "email": null,
+#       "full_name": "Мадина Жунусова",
+#       "status": "active",
+#       "birth_date": "2001-07-25",
+#       "has_valid_license": false,
+#       "created_at": "2026-10-07T08:31:40.260264+00:00"
+#     }
+#   ],
+#   "page": 1,
+#   "limit": 3,
+#   "total": 5,
+#   "pages": 2
+# }
+
+###############################################################################
+###############################################################################
+### ПР4: регистрация и вход, проверка токена, роли и права владельца,
+### единый формат ошибок {"error": {"code", "message", "details"}}
+###############################################################################
+
+###############################################################################
+# 33. Регистрация: роль всегда customer, пароль хранится только в виде хэша Argon2id
+###############################################################################
+POST {{host}}/api/v1/auth/register
+Content-Type: application/json
+
+{
+  "email": "newuser5318@example.kz",
+  "password": "Tiger#Moon2026"
+}
+
+# HTTP/1.1 201 Created
+# Location: /api/v1/users/1cc4e5aa-8300-40dc-ac9b-2c3a5c62fa54
+# {
+#   "id": "1cc4e5aa-8300-40dc-ac9b-2c3a5c62fa54",
+#   "email": "newuser5318@example.kz",
+#   "role": "customer",
+#   "customer_id": null,
+#   "is_active": true,
+#   "created_at": "2026-10-21T07:37:31.257756+00:00",
+#   "last_login_at": null
+# }
+
+###############################################################################
+# 34. Повторная регистрация того же email в другом регистре -> 409
+###############################################################################
+POST {{host}}/api/v1/auth/register
+Content-Type: application/json
+
+{
+  "email": "NEWUSER5318@EXAMPLE.KZ",
+  "password": "Tiger#Moon2026"
+}
+
+# HTTP/1.1 409 Conflict
+# {
+#   "error": {
+#     "code": "email_taken",
+#     "message": "User with this email already exists",
+#     "details": [
+#       {
+#         "field": "email",
+#         "message": "Email newuser5318@example.kz is already registered"
+#       }
+#     ]
+#   }
+# }
+
+###############################################################################
+# 35. Слабый пароль -> 400 с перечнем нарушенных правил
+###############################################################################
+POST {{host}}/api/v1/auth/register
+Content-Type: application/json
+
+{
+  "email": "weak5318@example.kz",
+  "password": "12345678"
+}
+
+# HTTP/1.1 400 Bad Request
+# {
+#   "error": {
+#     "code": "validation_error",
+#     "message": "Validation failed",
+#     "details": [
+#       {
+#         "field": "password",
+#         "message": "This password is too common."
+#       },
+#       {
+#         "field": "password",
+#         "message": "This password is entirely numeric."
+#       }
+#     ]
+#   }
+# }
+
+###############################################################################
+# 36. Попытка назначить себе роль при регистрации -> 400
+###############################################################################
+POST {{host}}/api/v1/auth/register
+Content-Type: application/json
+
+{
+  "email": "xnewuser5318@example.kz",
+  "password": "Tiger#Moon2026",
+  "role": "admin"
+}
+
+# HTTP/1.1 400 Bad Request
+# {
+#   "error": {
+#     "code": "validation_error",
+#     "message": "Validation failed",
+#     "details": [
+#       {
+#         "field": "role",
+#         "message": "Role cannot be set at registration"
+#       }
+#     ]
+#   }
+# }
+
+###############################################################################
+# 37. Вход: верный пароль -> access-токен (JWT, 60 минут)
+###############################################################################
+POST {{host}}/api/v1/auth/login
+Content-Type: application/json
+
+{
+  "email": "newuser5318@example.kz",
+  "password": "Tiger#Moon2026"
+}
+
+# HTTP/1.1 200 OK
+# {
+#   "access_token": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...",
+#   "token_type": "Bearer",
+#   "expires_in": 3600,
+#   "user": {
+#     "id": "1cc4e5aa-8300-40dc-ac9b-2c3a5c62fa54",
+#     "email": "newuser5318@example.kz",
+#     "role": "customer",
+#     "customer_id": null,
+#     "is_active": true,
+#     "created_at": "2026-10-21T07:37:31.257756+00:00",
+#     "last_login_at": "2026-10-21T07:37:31.756758+00:00"
+#   }
+# }
+
+###############################################################################
+# 38. Вход: неверный пароль -> 401 (тот же ответ, что и для несуществующего email)
+###############################################################################
+POST {{host}}/api/v1/auth/login
+Content-Type: application/json
+
+{
+  "email": "newuser5318@example.kz",
+  "password": "Wrong#Pass1"
+}
+
+# HTTP/1.1 401 Unauthorized
+# WWW-Authenticate: Bearer realm="api"
+# {
+#   "error": {
+#     "code": "invalid_credentials",
+#     "message": "Invalid email or password",
+#     "details": []
+#   }
+# }
+
+###############################################################################
+# 39. Кто я: учётная запись по токену
+###############################################################################
+GET {{host}}/api/v1/auth/me
+Authorization: Bearer {{customer_token}}
+
+# HTTP/1.1 200 OK
+# {
+#   "id": "204f1ca9-1538-4bce-b33e-a4dd7619bb11",
+#   "email": "aigerim@example.kz",
+#   "role": "customer",
+#   "customer_id": "0e626f02-6cc1-4d52-970e-e4ce80ace724",
+#   "is_active": true,
+#   "created_at": "2026-10-21T07:20:33.529742+00:00",
+#   "last_login_at": "2026-10-21T07:37:30.784182+00:00"
+# }
+
+###############################################################################
+# 40. Удаление машины без токена -> 401
+###############################################################################
+DELETE {{host}}/api/v1/cars/dba87a8f-4f2f-4460-907f-5fbe62870ca3
+
+# HTTP/1.1 401 Unauthorized
+# WWW-Authenticate: Bearer realm="api"
+# {
+#   "error": {
+#     "code": "not_authenticated",
+#     "message": "Authentication credentials were not provided.",
+#     "details": []
+#   }
+# }
+
+###############################################################################
+# 41. Удаление машины клиентом -> 403 (роль не та)
+###############################################################################
+DELETE {{host}}/api/v1/cars/dba87a8f-4f2f-4460-907f-5fbe62870ca3
+Authorization: Bearer {{customer_token}}
+
+# HTTP/1.1 403 Forbidden
+# {
+#   "error": {
+#     "code": "permission_denied",
+#     "message": "You do not have permission to perform this action",
+#     "details": [
+#       {
+#         "field": "role",
+#         "message": "Allowed roles: admin; your role: customer"
+#       }
+#     ]
+#   }
+# }
+
+###############################################################################
+# 42. Удаление машины администратором -> 204
+###############################################################################
+DELETE {{host}}/api/v1/cars/dba87a8f-4f2f-4460-907f-5fbe62870ca3
+Authorization: Bearer {{admin_token}}
+
+# HTTP/1.1 204 No Content
+
+###############################################################################
+# 43. Токен с истёкшим сроком -> 401 token_expired
+###############################################################################
+GET {{host}}/api/v1/users
+Authorization: Bearer <токен, выданный два часа назад>
+
+# HTTP/1.1 401 Unauthorized
+# WWW-Authenticate: Bearer realm="api"
+# {
+#   "error": {
+#     "code": "token_expired",
+#     "message": "Access token has expired",
+#     "details": []
+#   }
+# }
+
+###############################################################################
+# 44. Список пользователей: клиенту -> 403
+###############################################################################
+GET {{host}}/api/v1/users
+Authorization: Bearer {{customer_token}}
+
+# HTTP/1.1 403 Forbidden
+# {
+#   "error": {
+#     "code": "permission_denied",
+#     "message": "You do not have permission to perform this action",
+#     "details": [
+#       {
+#         "field": "role",
+#         "message": "Allowed roles: admin; your role: customer"
+#       }
+#     ]
+#   }
+# }
+
+###############################################################################
+# 45. Список пользователей: администратору -> 200
+###############################################################################
+GET {{host}}/api/v1/users?role=admin
+Authorization: Bearer {{admin_token}}
+
+# HTTP/1.1 200 OK
+# {
+#   "items": [
+#     {
+#       "id": "2b2cc4ba-2307-4355-b83c-f349d718a591",
+#       "email": "admin@carsharing.kz",
+#       "role": "admin",
+#       "customer_id": null,
+#       "is_active": true,
+#       "created_at": "2026-10-21T07:20:33.095743+00:00",
+#       "last_login_at": "2026-10-21T07:37:30.544181+00:00"
+#     }
+#   ],
+#   "page": 1,
+#   "limit": 10,
+#   "total": 1,
+#   "pages": 1
+# }
+
+###############################################################################
+# 46. Клиент видит только свои брони: чужая бронь -> 403
+###############################################################################
+GET {{host}}/api/v1/bookings/cbaa991c-1854-44ea-95d9-f1b963037785
+Authorization: Bearer <токен другого клиента>
+
+# HTTP/1.1 403 Forbidden
+# {
+#   "error": {
+#     "code": "permission_denied",
+#     "message": "You can access only your own data",
+#     "details": [
+#       {
+#         "field": "customer_id",
+#         "message": "Record belongs to another customer"
+#       }
+#     ]
+#   }
+# }
+
+###############################################################################
+# 47. Клиент бронирует на себя: телефон берётся из профиля, customer_phone не нужен
+###############################################################################
+POST {{host}}/api/v1/bookings
+Authorization: Bearer <токен клиента без активной аренды>
+Content-Type: application/json
+
+{
+  "car_id": "d3867661-cf2c-41af-9326-2f3831bdf107"
+}
+
+# HTTP/1.1 201 Created
+# Location: /api/v1/bookings/9590324f-db8f-42ee-bf90-46925ae88132
+# {
+#   "id": "9590324f-db8f-42ee-bf90-46925ae88132",
+#   "car_id": "d3867661-cf2c-41af-9326-2f3831bdf107",
+#   "customer_id": "c5b5823a-cf22-426f-8906-f7b5dc3813d1",
+#   "customer_phone": "+77027654321",
+#   "status": "active",
+#   "price_per_minute": 65.0,
+#   "total_cost": null,
+#   "started_at": "2026-10-21T07:37:33.257680+00:00",
+#   "finished_at": null
+# }
+
+###############################################################################
+# 48. Клиент пытается забронировать на чужой телефон -> 403
+###############################################################################
+POST {{host}}/api/v1/bookings
+Authorization: Bearer {{customer_token}}
+Content-Type: application/json
+
+{
+  "car_id": "d3867661-cf2c-41af-9326-2f3831bdf107",
+  "customer_phone": "+77027654321"
+}
+
+# HTTP/1.1 403 Forbidden
+# {
+#   "error": {
+#     "code": "permission_denied",
+#     "message": "Customers can book only for themselves",
+#     "details": [
+#       {
+#         "field": "customer_phone",
+#         "message": "Omit it or pass your own phone"
+#       }
+#     ]
+#   }
+# }
+
+###############################################################################
+# 49. Неизвестный URL под /api/ -> JSON 404 вместо HTML-страницы
+###############################################################################
+GET {{host}}/api/v1/no-such-resource
+
+# HTTP/1.1 404 Not Found
+# {
+#   "error": {
+#     "code": "not_found",
+#     "message": "Resource not found",
+#     "details": [
+#       {
+#         "field": "path",
+#         "message": "/api/v1/no-such-resource"
+#       }
+#     ]
+#   }
+# }
+
+###############################################################################
+# 50. Битый JSON -> 400 parse_error
+###############################################################################
+POST {{host}}/api/v1/cars
+Authorization: Bearer {{admin_token}}
+Content-Type: application/json
+
+{"plate": 
+
+# HTTP/1.1 400 Bad Request
+# {
+#   "error": {
+#     "code": "parse_error",
+#     "message": "JSON parse error - Expecting value: line 1 column 11 (char 10)",
+#     "details": []
+#   }
 # }

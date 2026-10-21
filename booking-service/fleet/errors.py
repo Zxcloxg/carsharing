@@ -1,70 +1,99 @@
-"""Единый формат ошибок API.
+"""Доменные ошибки каршеринга.
 
-Любая ошибка, отданная наружу, имеет одинаковую форму:
-
-    {"error": "human readable message", "details": [...]}
-
-`details` — список уточнений (пустой, если уточнять нечего). Для ошибок
-валидации в нём лежат объекты вида {"field": ..., "message": ...}.
+У каждой ошибки свой HTTP-код и машиночитаемый `code`; в ответ они попадают
+в едином формате {"error": {"code", "message", "details"}} — см.
+config/exceptions.py.
 """
 from rest_framework import status
-from rest_framework.response import Response
-from rest_framework.views import exception_handler as drf_exception_handler
 
-
-class DomainError(Exception):
-    """Ошибка бизнес-логики, которую слой маршрутов превращает в HTTP-ответ."""
-
-    status_code = status.HTTP_400_BAD_REQUEST
-    message = "Domain error"
-
-    def __init__(self, message=None, details=None):
-        super().__init__(message or self.message)
-        self.message = message or self.message
-        self.details = details or []
+from config.exceptions import DomainError
 
 
 class CarNotFound(DomainError):
     status_code = status.HTTP_404_NOT_FOUND
+    code = "car_not_found"
     message = "Car not found"
 
 
 class PlateAlreadyUsed(DomainError):
     status_code = status.HTTP_409_CONFLICT
+    code = "plate_already_used"
     message = "Car with this plate already exists"
 
 
-def error_response(message, details=None, status_code=status.HTTP_400_BAD_REQUEST):
-    return Response({"error": message, "details": details or []}, status=status_code)
+class CarHasBookings(DomainError):
+    status_code = status.HTTP_409_CONFLICT
+    code = "car_has_bookings"
+    message = "Car has bookings and cannot be deleted"
 
 
-def _flatten(errors, prefix=""):
-    """DRF отдаёт ошибки вложенным словарём — разворачиваем в плоский список."""
-    details = []
-    if isinstance(errors, dict):
-        for field, value in errors.items():
-            details.extend(_flatten(value, f"{prefix}.{field}" if prefix else str(field)))
-    elif isinstance(errors, list):
-        for item in errors:
-            details.extend(_flatten(item, prefix))
-    else:
-        details.append({"field": prefix or "non_field_errors", "message": str(errors)})
-    return details
+class CarNotAvailable(DomainError):
+    status_code = status.HTTP_409_CONFLICT
+    code = "car_not_available"
+    message = "Car is not available for booking"
 
 
-def api_exception_handler(exc, context):
-    """Приводит все исключения DRF и домена к единому формату ошибок."""
-    if isinstance(exc, DomainError):
-        return error_response(exc.message, exc.details, exc.status_code)
+class BookingNotFound(DomainError):
+    status_code = status.HTTP_404_NOT_FOUND
+    code = "booking_not_found"
+    message = "Booking not found"
 
-    response = drf_exception_handler(exc, context)
-    if response is None:
-        return None
 
-    data = response.data
-    if isinstance(data, dict) and set(data) == {"detail"}:
-        message, details = str(data["detail"]), []
-    else:
-        message, details = "Validation failed", _flatten(data)
-    response.data = {"error": message, "details": details}
-    return response
+class BookingAlreadyClosed(DomainError):
+    status_code = status.HTTP_409_CONFLICT
+    code = "booking_already_closed"
+    message = "Booking is already closed"
+
+
+class CustomerNotFound(DomainError):
+    status_code = status.HTTP_404_NOT_FOUND
+    code = "customer_not_found"
+    message = "Customer not found"
+
+
+class PhoneAlreadyUsed(DomainError):
+    status_code = status.HTTP_409_CONFLICT
+    code = "phone_already_used"
+    message = "Customer with this phone already exists"
+
+
+class EmailAlreadyUsed(DomainError):
+    status_code = status.HTTP_409_CONFLICT
+    code = "email_already_used"
+    message = "Customer with this email already exists"
+
+
+class CustomerCannotRent(DomainError):
+    status_code = status.HTTP_403_FORBIDDEN
+    code = "customer_cannot_rent"
+    message = "Customer is not allowed to rent"
+
+
+class CustomerHasActiveBooking(DomainError):
+    status_code = status.HTTP_409_CONFLICT
+    code = "customer_has_active_booking"
+    message = "Customer already has an active booking"
+
+
+class LicenseNotFound(DomainError):
+    status_code = status.HTTP_404_NOT_FOUND
+    code = "license_not_found"
+    message = "Driver license not found"
+
+
+class LicenseAlreadySubmitted(DomainError):
+    status_code = status.HTTP_409_CONFLICT
+    code = "license_already_submitted"
+    message = "Driver license is already submitted"
+
+
+class LicenseAlreadyReviewed(DomainError):
+    status_code = status.HTTP_409_CONFLICT
+    code = "license_already_reviewed"
+    message = "Driver license is already reviewed"
+
+
+class LicenseNumberTaken(DomainError):
+    status_code = status.HTTP_409_CONFLICT
+    code = "license_number_taken"
+    message = "Driver license is approved for another customer"
