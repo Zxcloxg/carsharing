@@ -9,13 +9,13 @@ from decimal import Decimal
 
 from rest_framework import serializers
 
+from . import domain
 from .models import PHONE_REGEX, BookingStatus, CarStatus, CustomerStatus, LicenseStatus
 
 CAR_STATUSES = tuple(CarStatus.values)
 BOOKING_STATUSES = tuple(BookingStatus.values)
 CUSTOMER_STATUSES = tuple(CustomerStatus.values)
-MAX_YEAR = datetime.now(timezone.utc).year + 1
-MIN_DRIVER_AGE = 18
+MAX_YEAR = domain.max_model_year(datetime.now(timezone.utc).date())
 
 
 class CarSerializer(serializers.Serializer):
@@ -36,7 +36,7 @@ class CarSerializer(serializers.Serializer):
     status = serializers.ChoiceField(choices=CAR_STATUSES, required=False, default="free")
 
     def validate_plate(self, value):
-        return value.strip().upper()
+        return domain.normalize_plate(value)
 
 
 class CarPatchSerializer(CarSerializer):
@@ -75,10 +75,8 @@ class CustomerSerializer(serializers.Serializer):
     birth_date = serializers.DateField()
 
     def validate_birth_date(self, value):
-        today = date.today()
-        age = today.year - value.year - ((today.month, today.day) < (value.month, value.day))
-        if age < MIN_DRIVER_AGE:
-            raise serializers.ValidationError(f"Customer must be at least {MIN_DRIVER_AGE} years old")
+        if not domain.is_adult(value, date.today()):
+            raise serializers.ValidationError(f"Customer must be at least {domain.MIN_DRIVER_AGE} years old")
         return value
 
     def validate_email(self, value):
@@ -111,18 +109,14 @@ class DriverLicenseSerializer(serializers.Serializer):
         return value.upper()
 
     def validate_categories(self, value):
-        value = value.upper()
-        if "B" not in value.split(","):
+        if not domain.allows_car_rental(value):
             raise serializers.ValidationError("Category B is required to rent a car")
-        return value
+        return domain.normalize_categories(value)
 
     def validate(self, attrs):
-        if attrs["issued_on"] > date.today():
-            raise serializers.ValidationError({"issued_on": "Issue date cannot be in the future"})
-        if attrs["expires_on"] <= attrs["issued_on"]:
-            raise serializers.ValidationError({"expires_on": "Must be later than issued_on"})
-        if attrs["expires_on"] < date.today():
-            raise serializers.ValidationError({"expires_on": "Driver license has expired"})
+        problems = domain.license_date_problems(attrs["issued_on"], attrs["expires_on"], date.today())
+        if problems:
+            raise serializers.ValidationError(problems)
         return attrs
 
 

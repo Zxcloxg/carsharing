@@ -81,7 +81,9 @@
   ли адрес.
 - Заблокированная учётная запись после верного пароля — 403 `account_disabled`.
 - Не больше 10 попыток входа (и 10 регистраций) в минуту с одного IP —
-  дальше 429 `throttled` (защита от перебора паролей).
+  дальше 429 `throttled` (защита от перебора паролей). IP — адрес соединения
+  (`REMOTE_ADDR`); заголовок `X-Forwarded-For` от клиента не учитывается, а токен в
+  запросе не даёт отдельного лимита (исправлено в ПР5, см. [`security.md`](security.md)).
 
 ### Почему JWT, а не серверная сессия
 
@@ -139,7 +141,8 @@
 |---|---|---|---|---|
 | `GET /cars`, `GET /cars/{id}` — каталог | ✅ | ✅ | ✅ | ✅ |
 | `POST /cars`, `PUT /cars/{id}` | 401 | 403 | 403 | ✅ |
-| `PATCH /cars/{id}` (статус, топливо) | 401 | 403 | ✅ | ✅ |
+| `PATCH /cars/{id}` — статус, топливо | 401 | 403 | ✅ | ✅ |
+| `PATCH /cars/{id}` — тариф, госномер, марка, модель, год, цвет | 401 | 403 | 403 (с ПР5) | ✅ |
 | `DELETE /cars/{id}` | 401 | 403 | 403 | ✅ |
 | `GET /cars/{id}/status-history` | 401 | 403 | ✅ | ✅ |
 | `GET /customers` — все клиенты | 401 | 403 | ✅ | ✅ |
@@ -224,7 +227,7 @@ python manage.py create_user admin@carsharing.kz --role admin
 ## 7. Проверка
 
 ```bash
-python manage.py test fleet accounts   # 108 автотестов, из них 62 — ПР4 (accounts/tests.py)
+python manage.py test tests            # все автотесты (ПР5: tests/unit, tests/api, tests/security)
 python manage.py seed_demo             # демо-пользователи всех ролей
 ./serve.cmd                            # в одном окне
 ./auth_check.cmd                       # в другом: 35 проверок, протокол -> docs/auth-check.md

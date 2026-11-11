@@ -18,8 +18,10 @@ python manage.py create_user admin@carsharing.kz --role admin   # или сво�
 python manage.py runserver 8010
 ```
 При старте в логе: `INFO config.db: Подключение к базе данных установлено: PostgreSQL 17.6, ...`.
-Без переменных окружения (в том числе `JWT_SECRET` не короче 32 символов)
-сервис не стартует.
+Без переменных окружения (в том числе `JWT_SECRET` не короче 32 символов и
+`DJANGO_SECRET_KEY` не короче 50) сервис не стартует. Режим отладки по умолчанию выключен;
+для локальной отладки (подробные страницы ошибок, стили админки при `runserver`) —
+`DJANGO_DEBUG=true` в `.env`. Все переменные — в [`.env.example`](.env.example).
 
 Схема данных, индексы, миграции и транзакции: [`../docs/database.md`](../docs/database.md).
 Аутентификация, роли и формат ошибок: [`../docs/auth.md`](../docs/auth.md).
@@ -58,7 +60,7 @@ curl -X DELETE http://127.0.0.1:8010/api/v1/cars/<id> -H "Authorization: Bearer 
 | POST | /api/v1/cars | Добавить машину (201 + `Location`) | admin |
 | GET | /api/v1/cars/{id} | Получить машину | все |
 | PUT | /api/v1/cars/{id} | Полностью заменить данные машины | admin |
-| PATCH | /api/v1/cars/{id} | Частично обновить (например, статус) | staff |
+| PATCH | /api/v1/cars/{id} | Частично обновить: оператор — только `status` и `fuel_level`, администратор — любые поля | staff |
 | DELETE | /api/v1/cars/{id} | Убрать машину из автопарка (204; 409, если есть брони) | admin |
 | GET | /api/v1/cars/{id}/status-history | Журнал смены статусов машины | staff |
 | GET | /api/v1/customers | Список клиентов: `page`/`limit`, фильтр `status` | staff |
@@ -97,6 +99,7 @@ curl -X DELETE http://127.0.0.1:8010/api/v1/cars/<id> -H "Authorization: Bearer 
 | `accounts/tokens.py` | Выпуск и проверка access-токенов |
 | `accounts/services.py` | Регистрация, вход, управление ролями, привязка профиля клиента |
 | `accounts/repository.py` | Доступ к таблице `users` |
+| `accounts/throttling.py` | Ограничение частоты входа и регистрации по адресу клиента (ПР5) |
 | `accounts/serializers.py` | Валидация email и пароля |
 | `accounts/management/commands/create_user.py` | Создание первого администратора |
 | `config/exceptions.py` | Единый формат ошибок и глобальный обработчик (включая 500) |
@@ -109,7 +112,8 @@ curl -X DELETE http://127.0.0.1:8010/api/v1/cars/<id> -H "Authorization: Bearer 
 | `fleet/urls.py` | Пути ресурса |
 | `fleet/views.py` | Маршруты: разбор запроса и коды ответов |
 | `fleet/serializers.py` | Валидация входных данных (схемы/DTO) |
-| `fleet/services.py` | Бизнес-логика и транзакции: уникальность номера, допуск к аренде, бронирование, оплата, пагинация |
+| `fleet/domain.py` | Правила предметной области — чистые функции без базы: тарификация, возраст, допуск к аренде, ВУ, пагинация (ПР5) |
+| `fleet/services.py` | Бизнес-логика и транзакции: уникальность номера, бронирование, оплата; правила берёт из `domain.py` |
 | `fleet/repositories/` | Слой доступа к данным, по модулю на сущность: `cars`, `car_models`, `customers`, `driver_licenses`, `bookings`, `payments`, `car_status_history` — единственное место с ORM-вызовами |
 | `fleet/models.py` | 10 моделей с ограничениями и индексами (см. `docs/database.md`) |
 | `fleet/admin.py` | Админка оператора: клиенты и ВУ, автопарк с опциями, аренды и платежи, инциденты |
@@ -117,12 +121,63 @@ curl -X DELETE http://127.0.0.1:8010/api/v1/cars/<id> -H "Authorization: Bearer 
 | `fleet/management/commands/` | `seed_demo`, `demo_transaction` (демонстрация отката) |
 | `fleet/errors.py` | Доменные исключения с HTTP-кодом и машиночитаемым `code` |
 
-## Тесты
+### `tests/` — автотесты (ПР5)
+
+| Путь | Ответственность |
+|---|---|
+| `tests/unit/` | Модульные тесты: `domain.py`, схемы валидации, JWT, права, формат ошибок, хэширование, лимиты |
+| `tests/api/` | API- и интеграционные тесты эндпоинтов, ограничений базы и команд управления |
+| `tests/security/` | Чек-лист OWASP API: 401/403 на всех маршрутах, лимиты, инъекции, лишние поля, права на поля, конфигурация |
+| `tests/helpers.py` | Общие данные и фабрики, базовый класс `ApiTestCase` (откат транзакции и чистый кэш) |
+| `tests/runner.py` | Запуск тестов с облегчёнными параметрами Argon2id |
+| `.coveragerc`, `coverage.cmd` | Настройки и запуск отчёта о покрытии |
+
+## Тестирование (ПР5)
+
+Тесты лежат в [`tests/`](tests): `unit/` — модульные тесты бизнес-правил, валидации,
+токенов и прав (без базы и сети), `api/` — HTTP-эндпоинты через тестовый клиент,
+`security/` — проверки по OWASP API Security. Подробно: [`../docs/testing.md`](../docs/testing.md).
+
+**1. Подготовка (один раз).** Нужен запущенный PostgreSQL и заполненный `.env`, как для
+запуска сервиса. Пользователю из `DB_USER` нужно право создавать базы: тесты работают в
+отдельной базе `test_<DB_NAME>`, которую Django создаёт и удаляет сам.
+
 ```bash
-python manage.py test fleet accounts  # 108 тестов на отдельной базе test_<DB_NAME>
-python manage.py demo_transaction     # откат транзакций бронирования и завершения аренды при сбое
+pip install -r requirements.txt -r requirements-dev.txt   # + coverage и PyYAML
 ```
 
-Проверка доступа на запущенном сервисе (после `seed_demo` и `./serve.cmd`):
-`./auth_check.cmd` — 35 запросов от имени анонима, клиентов, оператора и
-администратора; протокол сохраняется в [`../docs/auth-check.md`](../docs/auth-check.md).
+**2. Запуск тестов** — одна команда, 278 тестов, около 30 секунд:
+
+```bash
+python manage.py test tests                 # Windows: test.cmd
+python manage.py test tests.unit            # только модульные (99), база не нужна
+python manage.py test tests.security        # только безопасность (45)
+python manage.py test tests --shuffle       # случайный порядок: тесты не зависят друг от друга
+```
+
+**3. Покрытие:**
+
+```bash
+python -m coverage run manage.py test tests # Windows: coverage.cmd (делает все три шага)
+python -m coverage report                   # таблица в консоли
+python -m coverage html                     # отчёт по строкам: htmlcov/index.html
+```
+
+Покрытие — **97,9 %** (строки 98,3 %, ветвления 94,9 %). Слабее всего покрыты действия
+админки Django (88,6 %) и методы `__str__` моделей — это интерфейс сотрудников, он проверялся
+вручную. Остальные пропуски — защитные ветки на случай гонок и неизвестных ошибок базы, до
+которых нельзя дойти через API. Разбор по модулям — в
+[`../docs/testing.md`](../docs/testing.md#покрытие).
+
+**4. Проверки на запущенном сервисе** (после `python manage.py seed_demo` и `./serve.cmd`):
+
+```bash
+./auth_check.cmd       # ПР4: 35 сценариев доступа -> ../docs/auth-check.md
+./security_check.cmd   # ПР5: 70 проверок безопасности -> ../docs/security-check.md
+python manage.py demo_transaction   # откат транзакций бронирования и завершения аренды при сбое
+```
+
+Обе проверки расходуют лимит попыток входа (10 в минуту с IP), поэтому перед повторным
+запуском сервис нужно перезапустить или подождать минуту.
+
+Чек-лист безопасности и исправленные уязвимости: [`../docs/security.md`](../docs/security.md).

@@ -56,6 +56,9 @@ carsharing/
 │   ├── er-diagram.png       # ПР3: ER-диаграмма (исходник — er-diagram.dbml)
 │   ├── auth.md              # ПР4: пользователи, JWT, роли, единый формат ошибок
 │   ├── auth-check.md        # ПР4: протокол проверки сценариев доступа
+│   ├── testing.md           # ПР5: автотесты, изоляция, покрытие
+│   ├── security.md          # ПР5: чек-лист OWASP API, найденные и исправленные проблемы
+│   ├── security-check*.md   # ПР5: протоколы проверки безопасности до и после исправлений
 │   ├── backlog.md           # бэклог на семестр для Kanban
 │   ├── architecture.drawio  # редактируемая схема
 │   ├── architecture.svg
@@ -161,3 +164,29 @@ ER-диаграмма, ограничения, индексы и транзак�
 
 Подробности — в [`docs/auth.md`](docs/auth.md), протокол проверки трёх
 сценариев доступа на реальных запросах — в [`docs/auth-check.md`](docs/auth-check.md).
+
+## Тестирование (ПР5)
+
+Автотесты `booking-service` лежат в [`booking-service/tests/`](booking-service/tests):
+99 модульных (бизнес-правила, валидация, токены и права, без базы и сети), 134 API- и
+интеграционных (эндпоинты через тестовый клиент, позитивные и негативные сценарии) и 45
+тестов безопасности. Каждый тест работает в транзакции, которая откатывается, на отдельной
+базе `test_<DB_NAME>`; тесты проходят в любом порядке (`--shuffle`).
+
+```bash
+cd booking-service
+pip install -r requirements.txt -r requirements-dev.txt
+python manage.py test tests                                    # 278 тестов (Windows: test.cmd)
+python -m coverage run manage.py test tests && python -m coverage report   # Windows: coverage.cmd
+python -m coverage html                                        # отчёт: booking-service/htmlcov/index.html
+```
+
+**Покрытие — 97,9 %** (строки 98,3 %, ветвления 94,9 %). Доступ, маршруты, схемы и команды
+покрыты полностью. Слабее всего покрыты действия админки Django (88,6 %), которые проверялись
+вручную, и защитные ветки на случай гонок, до которых не дойти через API. Подробности — в
+[`docs/testing.md`](docs/testing.md).
+
+Проверка по OWASP API Security Top 10 нашла и устранила четыре проблемы: обход лимита
+попыток входа подменой `X-Forwarded-For`, ошибку 500 при входе с токеном, право оператора
+менять тариф машины и включённый режим отладки с ключом в репозитории. Чек-лист и записи
+«до/после» — в [`docs/security.md`](docs/security.md).

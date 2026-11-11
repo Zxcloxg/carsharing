@@ -1,5 +1,5 @@
 ### Примеры запросов и ответов: /api/v1/cars (ПР2), клиенты, брони и платежи (ПР3),
-### аутентификация, роли и единый формат ошибок (ПР4)
+### аутентификация, роли и единый формат ошибок (ПР4), безопасность (ПР5)
 #
 # Файл в формате .http: открывается в VS Code (REST Client), JetBrains IDE,
 # либо выполняется вручную через curl (команда приведена перед каждым блоком).
@@ -1196,6 +1196,80 @@ Content-Type: application/json
 #   "error": {
 #     "code": "parse_error",
 #     "message": "JSON parse error - Expecting value: line 1 column 11 (char 10)",
+#     "details": []
+#   }
+# }
+
+###############################################################################
+# ПР5. Безопасность: ограничение частоты входа и права на уровне полей
+###############################################################################
+# @name operatorLogin
+POST {{host}}/api/v1/auth/login
+Content-Type: application/json
+
+{"email": "operator@carsharing.kz", "password": "Orbit#Signal2026"}
+
+###
+@operator_token = {{operatorLogin.response.body.$.access_token}}
+
+###############################################################################
+# 51. Оператор меняет тариф машины -> 403 (оператору доступны только status и fuel_level)
+###############################################################################
+PATCH {{host}}/api/v1/cars/0d09b7c0-d31d-4208-816b-161bc206e997
+Authorization: Bearer {{operator_token}}
+Content-Type: application/json
+
+{"price_per_minute": 1}
+
+# HTTP/1.1 403 Forbidden
+# {
+#   "error": {
+#     "code": "permission_denied",
+#     "message": "Role operator cannot change: price_per_minute",
+#     "details": [
+#       {
+#         "field": "price_per_minute",
+#         "message": "Allowed for role operator: fuel_level, status"
+#       }
+#     ]
+#   }
+# }
+
+###############################################################################
+# 52. Оператор обновляет уровень топлива -> 200
+###############################################################################
+PATCH {{host}}/api/v1/cars/0d09b7c0-d31d-4208-816b-161bc206e997
+Authorization: Bearer {{operator_token}}
+Content-Type: application/json
+
+{"fuel_level": 0.8}
+
+# HTTP/1.1 200 OK
+# {"plate": "123ABC02", "brand": "Kia", "model": "Rio", "year": 2022, "color": "white",
+#  "price_per_minute": 65.0, "fuel_level": 0.8, "status": "free", "id": "0d09b7c0-...", ...}
+
+###############################################################################
+# 53. Подбор пароля с подменой X-Forwarded-For: заголовок не сбрасывает лимит
+###############################################################################
+# curl (Git Bash): 11 попыток, в каждой — новый «IP» в X-Forwarded-For
+#   for i in $(seq 1 11); do curl -s -o /dev/null -w "%{http_code} " -X POST \
+#     http://127.0.0.1:8010/api/v1/auth/login -H "Content-Type: application/json" \
+#     -H "X-Forwarded-For: 203.0.113.$i" \
+#     -d '{"email":"admin@carsharing.kz","password":"Guess#000'$i'"}'; done
+# Результат: 401 401 401 401 401 401 401 401 401 401 429
+# (до исправления в ПР5 все 11 попыток давали 401)
+POST {{host}}/api/v1/auth/login
+Content-Type: application/json
+X-Forwarded-For: 203.0.113.11
+
+{"email": "admin@carsharing.kz", "password": "Guess#00011"}
+
+# HTTP/1.1 429 Too Many Requests
+# Retry-After: 57
+# {
+#   "error": {
+#     "code": "throttled",
+#     "message": "Request was throttled. Expected available in 57 seconds.",
 #     "details": []
 #   }
 # }

@@ -12,6 +12,12 @@ env/
 staticfiles/
 media/
 
+# Отчёт о покрытии (python -m coverage html)
+.coverage
+.coverage.*
+htmlcov/
+coverage.json
+
 # Env / secrets
 .env
 *.local

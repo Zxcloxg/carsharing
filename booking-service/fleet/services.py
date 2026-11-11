@@ -5,25 +5,23 @@
 пагинация) и границы транзакций живут здесь и ничего не знают ни об HTTP,
 ни о том, как именно данные лежат в базе.
 """
-import math
 import uuid
 from datetime import datetime, timezone
 
 from django.db import transaction
 
+from . import domain
 from .errors import (
     BookingAlreadyClosed,
     BookingNotFound,
     CarNotAvailable,
     CarNotFound,
-    CustomerCannotRent,
-    CustomerHasActiveBooking,
     CustomerNotFound,
     LicenseAlreadyReviewed,
     LicenseNotFound,
     PlateAlreadyUsed,
 )
-from .models import BookingStatus, CarStatus, CustomerStatus, LicenseStatus, PaymentStatus
+from .models import BookingStatus, CarStatus, LicenseStatus, PaymentStatus
 from .repositories import (
     booking_repository,
     car_model_repository,
@@ -35,16 +33,6 @@ from .repositories import (
 )
 
 
-def _page(items, total, page, limit):
-    return {
-        "items": items,
-        "page": page,
-        "limit": limit,
-        "total": total,
-        "pages": (total + limit - 1) // limit if total else 0,
-    }
-
-
 def _now():
     return datetime.now(timezone.utc)
 
@@ -54,9 +42,9 @@ def list_cars(*, page=1, limit=10, status=None, brand=None, max_price_per_minute
     """Отфильтрованный и постранично ограниченный список машин."""
     items, total = car_repository.search(
         status=status, brand=brand, max_price_per_minute=max_price_per_minute,
-        offset=(page - 1) * limit, limit=limit,
+        offset=domain.page_offset(page, limit), limit=limit,
     )
-    return _page(items, total, page, limit)
+    return domain.page_envelope(items, total, page, limit)
 
 
 def get_car(car_id):
@@ -125,8 +113,8 @@ def _log_status(car_id, old_status, new_status, booking_id=None):
 
 # --- клиенты и водительские удостоверения -----------------------------------
 def list_customers(*, page=1, limit=10, status=None):
-    items, total = customer_repository.search(status=status, offset=(page - 1) * limit, limit=limit)
-    return _page(items, total, page, limit)
+    items, total = customer_repository.search(status=status, offset=domain.page_offset(page, limit), limit=limit)
+    return domain.page_envelope(items, total, page, limit)
 
 
 def get_customer(customer_id):
@@ -181,9 +169,9 @@ def review_license(license_id, decision):
 # --- брони и оплата -------------------------------------------------------
 def list_bookings(*, page=1, limit=10, car_id=None, customer_id=None, status=None):
     items, total = booking_repository.search(
-        car_id=car_id, customer_id=customer_id, status=status, offset=(page - 1) * limit, limit=limit
+        car_id=car_id, customer_id=customer_id, status=status, offset=domain.page_offset(page, limit), limit=limit
     )
-    return _page(items, total, page, limit)
+    return domain.page_envelope(items, total, page, limit)
 
 
 def get_booking(booking_id):
@@ -196,19 +184,6 @@ def get_booking(booking_id):
 def list_payments(booking_id):
     booking = get_booking(booking_id)
     return {"items": payment_repository.search(booking_id=booking["id"])}
-
-
-def _ensure_can_rent(customer):
-    if customer["status"] != CustomerStatus.ACTIVE:
-        raise CustomerCannotRent(details=[{"field": "customer_phone", "message": "Customer is blocked"}])
-    if not customer["has_valid_license"]:
-        raise CustomerCannotRent(
-            details=[{"field": "customer_phone", "message": "Driver license is not verified or expired"}]
-        )
-    if booking_repository.count(customer_id=customer["id"], status=BookingStatus.ACTIVE):
-        raise CustomerHasActiveBooking(
-            details=[{"field": "customer_phone", "message": "Finish the current booking first"}]
-        )
 
 
 @transaction.atomic
@@ -233,7 +208,8 @@ def create_booking(data):
         raise CustomerNotFound(
             details=[{"field": "customer_phone", "message": f"No customer with phone {data['customer_phone']}"}]
         )
-    _ensure_can_rent(customer)
+    has_active_booking = booking_repository.count(customer_id=customer["id"], status=BookingStatus.ACTIVE) > 0
+    domain.ensure_can_rent(customer, has_active_booking)
 
     booking = booking_repository.add(
         car_id=car["id"],
@@ -269,8 +245,7 @@ def close_booking(booking_id, status):
     total_cost = None
     if status == BookingStatus.FINISHED:
         started_at = datetime.fromisoformat(booking["started_at"])
-        minutes = max(1, math.ceil((finished_at - started_at).total_seconds() / 60))
-        total_cost = booking["price_per_minute"] * minutes
+        total_cost = domain.rental_cost(booking["price_per_minute"], started_at, finished_at)
 
     closed = booking_repository.update(
         booking["id"], {"status": status, "finished_at": finished_at, "total_cost": total_cost}

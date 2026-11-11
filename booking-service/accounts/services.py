@@ -4,6 +4,7 @@ from datetime import datetime, timezone
 from django.contrib.auth.hashers import check_password, make_password
 from django.db import transaction
 
+from fleet import domain
 from fleet import services as fleet_services
 
 from .errors import (
@@ -61,11 +62,8 @@ def get_user(user_id):
 
 
 def list_users(*, page=1, limit=10, role=None):
-    items, total = users.search(role=role, offset=(page - 1) * limit, limit=limit)
-    return {
-        "items": items, "page": page, "limit": limit, "total": total,
-        "pages": (total + limit - 1) // limit if total else 0,
-    }
+    items, total = users.search(role=role, offset=domain.page_offset(page, limit), limit=limit)
+    return domain.page_envelope(items, total, page, limit)
 
 
 def update_user(actor, user_id, changes):
