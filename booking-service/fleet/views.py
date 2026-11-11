@@ -7,8 +7,8 @@
 Права доступа (подробно — docs/auth.md):
 * каталог машин читают все, даже без токена;
 * клиент (customer) работает только со своими профилем, ВУ и бронями;
-* оператор (operator) проверяет ВУ, блокирует клиентов, меняет статус машин,
-  видит все брони;
+* оператор (operator) проверяет ВУ, блокирует клиентов, меняет статус и
+  уровень топлива машин (но не тариф и не госномер), видит все брони;
 * администратор (admin) вдобавок добавляет, заменяет и удаляет машины.
 """
 from rest_framework import status
@@ -19,7 +19,15 @@ from rest_framework.views import APIView
 from accounts import services as account_services
 from accounts.errors import AccessDenied, CustomerProfileRequired
 from accounts.models import Role
-from accounts.permissions import ALL_ROLES, STAFF_ROLES, ensure_owner_or_staff, is_staff, require_auth, require_role
+from accounts.permissions import (
+    ALL_ROLES,
+    STAFF_ROLES,
+    ensure_fields_allowed,
+    ensure_owner_or_staff,
+    is_staff,
+    require_auth,
+    require_role,
+)
 
 from . import services
 from .serializers import (
@@ -35,6 +43,11 @@ from .serializers import (
     DriverLicenseSerializer,
     LicenseReviewSerializer,
 )
+
+
+# Что оператор меняет у машины при обслуживании. Тариф, госномер, марку, модель,
+# год и цвет меняет только администратор (матрица прав — docs/auth.md).
+OPERATOR_CAR_FIELDS = frozenset({"status", "fuel_level"})
 
 
 def _created(item, location):
@@ -80,6 +93,8 @@ class CarItemView(APIView):
     def patch(self, request, car_id):
         body = CarPatchSerializer(data=request.data, partial=True)
         body.is_valid(raise_exception=True)
+        if request.user.role != Role.ADMIN:
+            ensure_fields_allowed(request.user, body.validated_data, OPERATOR_CAR_FIELDS)
         return Response(services.patch_car(car_id, body.validated_data), status=status.HTTP_200_OK)
 
     @require_role(Role.ADMIN)

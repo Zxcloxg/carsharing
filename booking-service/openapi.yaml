@@ -136,13 +136,13 @@ paths:
       summary: Текущий пользователь по токену
       operationId: me
       responses:
-        "401":
-          $ref: "#/components/responses/Unauthorized"
         "200":
           description: Учётная запись владельца токена
           content:
             application/json:
               schema: { $ref: "#/components/schemas/User" }
+        "401":
+          $ref: "#/components/responses/Unauthorized"
 
   /api/v1/users:
     get:
@@ -154,10 +154,6 @@ paths:
         - { name: limit, in: query, schema: { type: integer, minimum: 1, maximum: 100, default: 10 } }
         - { name: role, in: query, schema: { type: string, enum: [customer, operator, admin] } }
       responses:
-        "401":
-          $ref: "#/components/responses/Unauthorized"
-        "403":
-          $ref: "#/components/responses/Forbidden"
         "200":
           description: Страница учётных записей
           content:
@@ -165,6 +161,10 @@ paths:
               schema: { $ref: "#/components/schemas/UserPage" }
         "400":
           $ref: "#/components/responses/ValidationError"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
 
   /api/v1/users/{id}:
     parameters:
@@ -174,15 +174,15 @@ paths:
       summary: Учётная запись (только admin)
       operationId: getUser
       responses:
-        "401":
-          $ref: "#/components/responses/Unauthorized"
-        "403":
-          $ref: "#/components/responses/Forbidden"
         "200":
           description: Учётная запись
           content:
             application/json:
               schema: { $ref: "#/components/schemas/User" }
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
         "404":
           $ref: "#/components/responses/NotFound"
     patch:
@@ -195,10 +195,6 @@ paths:
           application/json:
             schema: { $ref: "#/components/schemas/UserPatch" }
       responses:
-        "401":
-          $ref: "#/components/responses/Unauthorized"
-        "403":
-          $ref: "#/components/responses/Forbidden"
         "200":
           description: Учётная запись обновлена
           content:
@@ -206,6 +202,10 @@ paths:
               schema: { $ref: "#/components/schemas/User" }
         "400":
           $ref: "#/components/responses/ValidationError"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
         "404":
           $ref: "#/components/responses/NotFound"
         "409":
@@ -261,10 +261,6 @@ paths:
           application/json:
             schema: { $ref: "#/components/schemas/CarInput" }
       responses:
-        "401":
-          $ref: "#/components/responses/Unauthorized"
-        "403":
-          $ref: "#/components/responses/Forbidden"
         "201":
           description: Автомобиль создан
           headers:
@@ -276,6 +272,10 @@ paths:
               schema: { $ref: "#/components/schemas/Car" }
         "400":
           $ref: "#/components/responses/ValidationError"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
         "409":
           $ref: "#/components/responses/Conflict"
 
@@ -309,10 +309,6 @@ paths:
           application/json:
             schema: { $ref: "#/components/schemas/CarInput" }
       responses:
-        "401":
-          $ref: "#/components/responses/Unauthorized"
-        "403":
-          $ref: "#/components/responses/Forbidden"
         "200":
           description: Автомобиль обновлён
           content:
@@ -320,6 +316,10 @@ paths:
               schema: { $ref: "#/components/schemas/Car" }
         "400":
           $ref: "#/components/responses/ValidationError"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
         "404":
           $ref: "#/components/responses/NotFound"
         "409":
@@ -327,6 +327,11 @@ paths:
     patch:
       tags: [cars]
       summary: Частично обновить автомобиль
+      description: |
+        Оператор меняет только `status` и `fuel_level`; тариф, госномер, марку,
+        модель, год и цвет — только администратор. Запрос оператора с любым
+        другим полем отклоняется целиком: 403 `permission_denied`, в `details`
+        перечислены запрещённые поля.
       operationId: patchCar
       requestBody:
         required: true
@@ -334,10 +339,6 @@ paths:
           application/json:
             schema: { $ref: "#/components/schemas/CarPatch" }
       responses:
-        "401":
-          $ref: "#/components/responses/Unauthorized"
-        "403":
-          $ref: "#/components/responses/Forbidden"
         "200":
           description: Автомобиль обновлён
           content:
@@ -345,6 +346,10 @@ paths:
               schema: { $ref: "#/components/schemas/Car" }
         "400":
           $ref: "#/components/responses/ValidationError"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
         "404":
           $ref: "#/components/responses/NotFound"
         "409":
@@ -354,12 +359,12 @@ paths:
       summary: Удалить автомобиль из автопарка
       operationId: deleteCar
       responses:
+        "204":
+          description: Удалён, тела ответа нет
         "401":
           $ref: "#/components/responses/Unauthorized"
         "403":
           $ref: "#/components/responses/Forbidden"
-        "204":
-          description: Удалён, тела ответа нет
         "404":
           $ref: "#/components/responses/NotFound"
         "409":
@@ -376,10 +381,6 @@ paths:
       summary: Журнал смены статусов машины
       operationId: getCarStatusHistory
       responses:
-        "401":
-          $ref: "#/components/responses/Unauthorized"
-        "403":
-          $ref: "#/components/responses/Forbidden"
         "200":
           description: Записи журнала в порядке времени
           content:
@@ -390,6 +391,10 @@ paths:
                   items:
                     type: array
                     items: { $ref: "#/components/schemas/CarStatusChange" }
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
         "404":
           $ref: "#/components/responses/NotFound"
 
@@ -403,10 +408,6 @@ paths:
         - { name: limit, in: query, schema: { type: integer, minimum: 1, maximum: 100, default: 10 } }
         - { name: status, in: query, schema: { type: string, enum: [active, blocked] } }
       responses:
-        "401":
-          $ref: "#/components/responses/Unauthorized"
-        "403":
-          $ref: "#/components/responses/Forbidden"
         "200":
           description: Страница клиентов
           content:
@@ -414,6 +415,10 @@ paths:
               schema: { $ref: "#/components/schemas/CustomerPage" }
         "400":
           $ref: "#/components/responses/ValidationError"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
     post:
       tags: [customers]
       summary: Зарегистрировать клиента
@@ -424,10 +429,6 @@ paths:
           application/json:
             schema: { $ref: "#/components/schemas/CustomerInput" }
       responses:
-        "401":
-          $ref: "#/components/responses/Unauthorized"
-        "403":
-          $ref: "#/components/responses/Forbidden"
         "201":
           description: Клиент создан
           headers:
@@ -437,6 +438,10 @@ paths:
               schema: { $ref: "#/components/schemas/Customer" }
         "400":
           $ref: "#/components/responses/ValidationError"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
         "409":
           description: Телефон или email уже зарегистрирован
           content:
@@ -451,15 +456,15 @@ paths:
       summary: Получить клиента
       operationId: getCustomer
       responses:
-        "401":
-          $ref: "#/components/responses/Unauthorized"
-        "403":
-          $ref: "#/components/responses/Forbidden"
         "200":
           description: Клиент
           content:
             application/json:
               schema: { $ref: "#/components/schemas/Customer" }
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
         "404":
           $ref: "#/components/responses/NotFound"
     patch:
@@ -476,10 +481,6 @@ paths:
               properties:
                 status: { type: string, enum: [active, blocked] }
       responses:
-        "401":
-          $ref: "#/components/responses/Unauthorized"
-        "403":
-          $ref: "#/components/responses/Forbidden"
         "200":
           description: Клиент обновлён
           content:
@@ -487,6 +488,10 @@ paths:
               schema: { $ref: "#/components/schemas/Customer" }
         "400":
           $ref: "#/components/responses/ValidationError"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
         "404":
           $ref: "#/components/responses/NotFound"
 
@@ -498,10 +503,6 @@ paths:
       summary: Заявки клиента на проверку ВУ
       operationId: listCustomerLicenses
       responses:
-        "401":
-          $ref: "#/components/responses/Unauthorized"
-        "403":
-          $ref: "#/components/responses/Forbidden"
         "200":
           description: Все заявки клиента в порядке подачи
           content:
@@ -512,6 +513,10 @@ paths:
                   items:
                     type: array
                     items: { $ref: "#/components/schemas/DriverLicense" }
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
         "404":
           $ref: "#/components/responses/NotFound"
     post:
@@ -524,10 +529,6 @@ paths:
           application/json:
             schema: { $ref: "#/components/schemas/DriverLicenseInput" }
       responses:
-        "401":
-          $ref: "#/components/responses/Unauthorized"
-        "403":
-          $ref: "#/components/responses/Forbidden"
         "201":
           description: Заявка создана в статусе pending
           headers:
@@ -537,6 +538,10 @@ paths:
               schema: { $ref: "#/components/schemas/DriverLicense" }
         "400":
           $ref: "#/components/responses/ValidationError"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
         "404":
           $ref: "#/components/responses/NotFound"
         "409":
@@ -553,15 +558,15 @@ paths:
       summary: Получить заявку на проверку ВУ
       operationId: getLicense
       responses:
-        "401":
-          $ref: "#/components/responses/Unauthorized"
-        "403":
-          $ref: "#/components/responses/Forbidden"
         "200":
           description: Заявка
           content:
             application/json:
               schema: { $ref: "#/components/schemas/DriverLicense" }
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
         "404":
           $ref: "#/components/responses/NotFound"
     patch:
@@ -579,10 +584,6 @@ paths:
                 status: { type: string, enum: [approved, rejected] }
                 reject_reason: { type: string, minLength: 3, maxLength: 500, description: Обязательна при rejected }
       responses:
-        "401":
-          $ref: "#/components/responses/Unauthorized"
-        "403":
-          $ref: "#/components/responses/Forbidden"
         "200":
           description: Заявка рассмотрена
           content:
@@ -590,6 +591,10 @@ paths:
               schema: { $ref: "#/components/schemas/DriverLicense" }
         "400":
           $ref: "#/components/responses/ValidationError"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
         "404":
           $ref: "#/components/responses/NotFound"
         "409":
@@ -610,10 +615,6 @@ paths:
         - { name: customer_id, in: query, schema: { type: string, format: uuid } }
         - { name: status, in: query, schema: { type: string, enum: [active, finished, cancelled] } }
       responses:
-        "401":
-          $ref: "#/components/responses/Unauthorized"
-        "403":
-          $ref: "#/components/responses/Forbidden"
         "200":
           description: Страница броней
           content:
@@ -621,6 +622,10 @@ paths:
               schema: { $ref: "#/components/schemas/BookingPage" }
         "400":
           $ref: "#/components/responses/ValidationError"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
     post:
       tags: [bookings]
       summary: Забронировать машину
@@ -636,8 +641,6 @@ paths:
           application/json:
             schema: { $ref: "#/components/schemas/BookingInput" }
       responses:
-        "401":
-          $ref: "#/components/responses/Unauthorized"
         "201":
           description: Бронь создана
           headers:
@@ -647,6 +650,8 @@ paths:
               schema: { $ref: "#/components/schemas/Booking" }
         "400":
           $ref: "#/components/responses/ValidationError"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
         "403":
           description: |
             Клиент заблокирован или его ВУ не подтверждено (customer_cannot_rent);
@@ -671,15 +676,15 @@ paths:
       summary: Получить бронь
       operationId: getBooking
       responses:
-        "401":
-          $ref: "#/components/responses/Unauthorized"
-        "403":
-          $ref: "#/components/responses/Forbidden"
         "200":
           description: Бронь
           content:
             application/json:
               schema: { $ref: "#/components/schemas/Booking" }
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
         "404":
           $ref: "#/components/responses/NotFound"
     patch:
@@ -700,10 +705,6 @@ paths:
               properties:
                 status: { type: string, enum: [finished, cancelled] }
       responses:
-        "401":
-          $ref: "#/components/responses/Unauthorized"
-        "403":
-          $ref: "#/components/responses/Forbidden"
         "200":
           description: Бронь закрыта
           content:
@@ -711,6 +712,10 @@ paths:
               schema: { $ref: "#/components/schemas/Booking" }
         "400":
           $ref: "#/components/responses/ValidationError"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
         "404":
           $ref: "#/components/responses/NotFound"
         "409":
@@ -727,10 +732,6 @@ paths:
       summary: Платежи по аренде
       operationId: listBookingPayments
       responses:
-        "401":
-          $ref: "#/components/responses/Unauthorized"
-        "403":
-          $ref: "#/components/responses/Forbidden"
         "200":
           description: Платежи в порядке создания
           content:
@@ -741,6 +742,10 @@ paths:
                   items:
                     type: array
                     items: { $ref: "#/components/schemas/Payment" }
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
         "404":
           $ref: "#/components/responses/NotFound"
 

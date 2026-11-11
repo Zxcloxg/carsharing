@@ -9,6 +9,10 @@
 
 ensure_owner_or_staff — проверка на уровне записи: клиент видит и меняет
 только свои данные (профиль, ВУ, брони), персонал — любые.
+
+ensure_fields_allowed — проверка на уровне полей: роль может иметь право на
+операцию, но не на каждое поле (оператор меняет у машины статус и топливо,
+но не тариф).
 """
 from functools import wraps
 
@@ -50,6 +54,19 @@ def require_role(*roles):
 
 def is_staff(user):
     return user.role in STAFF_ROLES
+
+
+def ensure_fields_allowed(user, changes, allowed):
+    """Все изменяемые поля входят в `allowed`; иначе 403 с перечнем запрещённых полей. Запрос отклоняется целиком."""
+    forbidden = sorted(set(changes) - set(allowed))
+    if forbidden:
+        raise AccessDenied(
+            f"Role {user.role} cannot change: {', '.join(forbidden)}",
+            details=[
+                {"field": field, "message": f"Allowed for role {user.role}: {', '.join(sorted(allowed))}"}
+                for field in forbidden
+            ],
+        )
 
 
 def ensure_owner_or_staff(user, customer_id):

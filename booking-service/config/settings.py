@@ -35,16 +35,29 @@ def env_required(name):
     return value
 
 
-# Quick-start development settings - unsuitable for production
-# See https://docs.djangoproject.com/en/6.1/howto/deployment/checklist/
+def env_flag(name, default=False):
+    """Логический флаг из окружения: включён только явным 1/true/yes/on."""
+    value = os.environ.get(name)
+    if value is None:
+        return default
+    return value.strip().lower() in ("1", "true", "yes", "on")
 
-# SECURITY WARNING: keep the secret key used in production secret!
-SECRET_KEY = 'django-insecure-v-%&+d54pi8=ftj78w%sc4s_qf0az2l*r!l1dm%r+9ypkokxaq'
 
-# SECURITY WARNING: don't run with debug turned on in production!
-DEBUG = True
+def env_list(name, default):
+    return [item.strip() for item in os.environ.get(name, default).split(",") if item.strip()]
 
-ALLOWED_HOSTS = []
+
+# Безопасность (ПР5, docs/security.md): ключ и режим отладки — только из окружения.
+# Ключ подписывает сессии и CSRF-токены админки; в репозитории его нет.
+SECRET_KEY = env_required('DJANGO_SECRET_KEY')
+if len(SECRET_KEY) < 50:
+    raise ImproperlyConfigured('DJANGO_SECRET_KEY must be at least 50 characters long')
+
+# Отладка выключена, если её явно не включили: DEBUG=True показывает на любой
+# ошибке страницу со списком маршрутов, настройками и стектрейсом.
+DEBUG = env_flag('DJANGO_DEBUG')
+
+ALLOWED_HOSTS = env_list('DJANGO_ALLOWED_HOSTS', 'localhost,127.0.0.1')
 
 
 # Application definition
@@ -127,6 +140,9 @@ PASSWORD_HASHERS = [
     'django.contrib.auth.hashers.PBKDF2SHA1PasswordHasher',
 ]
 
+# Автотесты: тот же Argon2id, но с облегчёнными параметрами (см. tests/runner.py).
+TEST_RUNNER = 'tests.runner.TestRunner'
+
 AUTH_PASSWORD_VALIDATORS = [
     {
         'NAME': 'django.contrib.auth.password_validation.UserAttributeSimilarityValidator',
@@ -187,6 +203,12 @@ REST_FRAMEWORK = {
         'login': os.environ.get('LOGIN_THROTTLE_RATE', '10/min'),
         'register': os.environ.get('REGISTER_THROTTLE_RATE', '10/min'),
     },
+    # Сколько доверенных прокси стоит перед сервисом. 0 — запросы приходят напрямую,
+    # адрес клиента — REMOTE_ADDR, а X-Forwarded-For от клиента игнорируется.
+    # За API Gateway — 1: адрес клиента берётся из последнего звена X-Forwarded-For,
+    # которое дописал сам шлюз. Значение None (по умолчанию в DRF) означало бы
+    # «верить заголовку целиком» — тогда лимит обходится подменой X-Forwarded-For.
+    'NUM_PROXIES': int(os.environ.get('TRUSTED_PROXY_COUNT', '0')),
 }
 
 

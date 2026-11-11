@@ -1,19 +1,19 @@
 """Маршруты аутентификации и управления пользователями."""
 from rest_framework import status
 from rest_framework.response import Response
-from rest_framework.throttling import ScopedRateThrottle
 from rest_framework.views import APIView
 
 from . import services
 from .models import Role
 from .permissions import require_auth, require_role
 from .serializers import LoginSerializer, RegisterSerializer, UserListQuerySerializer, UserPatchSerializer
+from .throttling import ClientAddressThrottle
 
 
 class RegisterView(APIView):
     """/api/v1/auth/register — регистрация клиента."""
 
-    throttle_classes = [ScopedRateThrottle]
+    throttle_classes = [ClientAddressThrottle]
     throttle_scope = "register"
 
     def post(self, request):
@@ -27,7 +27,7 @@ class LoginView(APIView):
     """/api/v1/auth/login — обмен email и пароля на access-токен."""
 
     # Ограничение частоты попыток с одного IP — защита от перебора паролей.
-    throttle_classes = [ScopedRateThrottle]
+    throttle_classes = [ClientAddressThrottle]
     throttle_scope = "login"
 
     def post(self, request):

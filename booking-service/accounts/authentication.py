@@ -32,6 +32,11 @@ class CurrentUser:
 
     is_authenticated = True
 
+    @property
+    def pk(self):
+        """Как у модели Django: часть DRF (например, ограничители частоты) обращается к user.pk."""
+        return self.id
+
 
 class JWTAuthentication(BaseAuthentication):
     def authenticate(self, request):
