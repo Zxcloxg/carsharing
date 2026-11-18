@@ -9,6 +9,7 @@ from config import urls as project_urls
 from fleet import services as fleet_services
 from tests.helpers import ME, VALID_CAR, ApiTestCase, authenticate, make_account
 
+
 def _broken_plain_view(request):
     raise RuntimeError("database password is hunter2")
 

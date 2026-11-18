@@ -40,7 +40,6 @@ from .repositories import (
     payment_repository,
 )
 
-
 logger = logging.getLogger("fleet.payments")
 
 

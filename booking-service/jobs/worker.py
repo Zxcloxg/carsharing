@@ -30,6 +30,8 @@ from django.tasks.signals import task_finished, task_started
 from django.utils import timezone
 from django.utils.json import normalize_json
 
+from config.observability import task_id_var
+
 from .backends import resolve_task, short_id, to_task_result
 from .models import BackgroundTask
 from .retry import PermanentTaskError, backoff_delay, describe_error, is_final_failure
@@ -81,7 +83,18 @@ class Worker:
 
     # --- выполнение -----------------------------------------------------------
     def process(self, row):
-        """Выполнить взятую задачу и записать исход: успех, повтор или окончательный сбой."""
+        """Выполнить взятую задачу и записать исход: успех, повтор или окончательный сбой.
+
+        Пока задача выполняется, все записи лога (и обработчика, и кода задачи) несут
+        task_id — в JSON-логах по нему видна вся история одной задачи (ПР7).
+        """
+        token = task_id_var.set(str(row.id))
+        try:
+            self._process(row)
+        finally:
+            task_id_var.reset(token)
+
+    def _process(self, row):
         try:
             task = resolve_task(row.task_path)
         except ImportError as exc:  # код задачи удалён или переименован — повтор не поможет

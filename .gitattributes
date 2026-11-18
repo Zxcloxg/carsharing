@@ -1,0 +1,6 @@
+# Скрипты и файлы, которые выполняются внутри Linux-контейнеров, — всегда с LF:
+# CRLF из Windows ломает shebang ("/bin/sh^M: not found").
+*.sh text eol=lf
+Dockerfile text eol=lf
+docker-compose.yml text eol=lf
+.github/workflows/*.yml text eol=lf

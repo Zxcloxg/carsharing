@@ -44,7 +44,6 @@ from .serializers import (
     LicenseReviewSerializer,
 )
 
-
 # Что оператор меняет у машины при обслуживании. Тариф, госномер, марку, модель,
 # год и цвет меняет только администратор (матрица прав — docs/auth.md).
 OPERATOR_CAR_FIELDS = frozenset({"status", "fuel_level"})

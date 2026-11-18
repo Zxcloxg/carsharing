@@ -1,0 +1,19 @@
+# В образ попадает только то, что нужно для работы сервиса.
+.venv/
+venv/
+__pycache__/
+*.py[cod]
+.env
+.env.*
+!.env.example
+db.sqlite3
+staticfiles/
+htmlcov/
+.coverage
+.coverage.*
+coverage.json
+.async-check/
+tests/
+*.cmd
+Dockerfile
+.dockerignore

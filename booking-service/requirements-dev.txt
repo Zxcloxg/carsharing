@@ -2,3 +2,5 @@
 #   pip install -r requirements.txt -r requirements-dev.txt
 coverage==7.10.6
 PyYAML==6.0.3
+# ПР7: линтер (CI: ruff check .)
+ruff==0.8.4

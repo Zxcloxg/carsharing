@@ -1,0 +1,124 @@
+# Вся система каршеринга одной командой (ПР7):
+#   cp .env.example .env   # и заполнить значения
+#   docker compose up -d --build --wait
+# API — http://localhost:8010, телеметрия — http://localhost:8020.
+#
+# Секретов в этом файле нет: значения подставляются из .env (он в .gitignore).
+# Конструкция ${VAR:?текст} останавливает запуск с понятной ошибкой, если переменная не задана.
+name: carsharing
+
+# Общие переменные окружения ролей booking-service (api, worker, migrate).
+x-booking-env: &booking-env
+  DB_HOST: db  # обращение по имени сервиса в сети compose, а не localhost
+  DB_PORT: "5432"
+  DB_NAME: ${DB_NAME:-carsharing}
+  DB_USER: ${DB_USER:-carsharing}
+  DB_PASSWORD: ${DB_PASSWORD:?DB_PASSWORD is not set — copy .env.example to .env}
+  DJANGO_SECRET_KEY: ${DJANGO_SECRET_KEY:?DJANGO_SECRET_KEY is not set}
+  JWT_SECRET: ${JWT_SECRET:?JWT_SECRET is not set}
+  DJANGO_ALLOWED_HOSTS: ${DJANGO_ALLOWED_HOSTS:-localhost,127.0.0.1,api}
+  METRICS_TOKEN: ${METRICS_TOKEN:-}
+  LOG_FORMAT: json
+  PAYMENT_PROVIDER_URL: http://payment-provider:8030
+  TASK_MAX_ATTEMPTS: ${TASK_MAX_ATTEMPTS:-3}
+  TASK_RETRY_BACKOFF_SECONDS: ${TASK_RETRY_BACKOFF_SECONDS:-2}
+
+# Сборка одного образа для всех ролей booking-service.
+x-booking-image: &booking-image
+  build: ./booking-service
+  image: carsharing/booking-service:latest
+
+services:
+  db:
+    image: postgres:17-alpine
+    environment:
+      POSTGRES_DB: ${DB_NAME:-carsharing}
+      POSTGRES_USER: ${DB_USER:-carsharing}
+      POSTGRES_PASSWORD: ${DB_PASSWORD:?DB_PASSWORD is not set — copy .env.example to .env}
+    volumes:
+      - pgdata:/var/lib/postgresql/data  # именованный том: данные переживают пересоздание контейнера
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+    networks: [backend]
+    restart: unless-stopped
+    # Порт наружу не открыт: к базе обращаются только сервисы из сети backend.
+
+  migrate:
+    <<: *booking-image
+    command: ["migrate"]
+    environment:
+      <<: *booking-env
+      SEED_DEMO: ${SEED_DEMO:-false}
+    depends_on:
+      db:
+        condition: service_healthy
+    networks: [backend]
+    restart: "no"  # одноразовый шаг развёртывания: применил миграции и завершился с кодом 0
+
+  api:
+    <<: *booking-image
+    command: ["api"]
+    environment: *booking-env
+    ports:
+      - "${API_PORT:-8010}:8010"
+    depends_on:
+      db:
+        condition: service_healthy
+      migrate:
+        condition: service_completed_successfully  # API стартует только на уже применённой схеме
+    healthcheck:
+      # /health проверяет и процесс, и базу данных (health/views.py); в slim-образе нет curl — берём Python.
+      test: ["CMD", "python", "-c", "import urllib.request,sys; sys.exit(urllib.request.urlopen('http://127.0.0.1:8010/health', timeout=3).status != 200)"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+      start_period: 20s
+    networks: [backend]
+    restart: unless-stopped
+
+  worker:
+    <<: *booking-image
+    command: ["worker"]
+    environment: *booking-env
+    depends_on:
+      db:
+        condition: service_healthy
+      migrate:
+        condition: service_completed_successfully
+    networks: [backend]
+    restart: unless-stopped
+
+  payment-provider:
+    <<: *booking-image
+    command: ["provider"]
+    environment:
+      PROVIDER_LATENCY: ${PROVIDER_LATENCY:-1.5}
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request,sys; sys.exit(urllib.request.urlopen('http://127.0.0.1:8030/health', timeout=3).status != 200)"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+    networks: [backend]
+    restart: unless-stopped
+
+  telemetry:
+    build: ./telemetry-service
+    image: carsharing/telemetry-service:latest
+    ports:
+      - "${TELEMETRY_PORT:-8020}:8020"
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request,sys; sys.exit(urllib.request.urlopen('http://127.0.0.1:8020/health', timeout=3).status != 200)"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+    networks: [backend]
+    restart: unless-stopped
+
+volumes:
+  pgdata:
+
+networks:
+  backend:

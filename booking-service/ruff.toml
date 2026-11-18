@@ -1,0 +1,14 @@
+# Линтер (ПР7): запускается в CI перед тестами — ruff check .
+target-version = "py312"
+line-length = 120
+extend-exclude = [".venv", "*/migrations/*", "htmlcov"]
+
+[lint]
+# E/W — ошибки стиля PEP 8, F — pyflakes (неиспользуемые импорты и переменные, опечатки в именах),
+# I — порядок импортов, B — flake8-bugbear (типичные ошибки: потерянная причина исключения и т. п.).
+select = ["E", "F", "W", "I", "B"]
+# Длинные строки (SQL-подобные цепочки ORM, тексты ошибок) не ломаем ради линтера.
+ignore = ["E501"]
+
+[lint.isort]
+known-first-party = ["accounts", "config", "fleet", "health", "jobs", "tests", "payment_provider_stub"]

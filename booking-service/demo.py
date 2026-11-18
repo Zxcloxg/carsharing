@@ -49,9 +49,9 @@ def call(method, path, body=None, title="", token=None):
             code, raw, headers = response.status, response.read(), response.headers
     except urllib.error.HTTPError as exc:
         code, raw, headers = exc.code, exc.read(), exc.headers
-    except urllib.error.URLError:
+    except urllib.error.URLError as exc:
         print("\n!! Сервис не отвечает. Запустите ./serve.cmd в соседнем окне.\n")
-        raise SystemExit(1)
+        raise SystemExit(1) from exc
 
     print(f"\n--> HTTP {code}")
     if headers.get("Location"):

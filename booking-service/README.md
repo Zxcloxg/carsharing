@@ -4,7 +4,15 @@
 брони/поездки, тарифы, платежи. Публичный REST для мобильного клиента +
 админка для операторов.
 
-## Запуск
+## Запуск в Docker (ПР7)
+Из корня репозитория: `cp .env.example .env` (заполнить секреты), затем
+`docker compose up -d --build --wait`. Образ собирается по [`Dockerfile`](Dockerfile);
+роль контейнера (`api`, `worker`, `migrate`, `provider`) выбирает
+[`docker/entrypoint.sh`](docker/entrypoint.sh), а настройки gunicorn лежат в
+[`gunicorn.conf.py`](gunicorn.conf.py). Подробно — в
+[`../docs/deployment.md`](../docs/deployment.md).
+
+## Запуск без Docker
 Нужен PostgreSQL (локальный или в Docker:
 `docker run -d --name carsharing-pg -e POSTGRES_DB=carsharing -e POSTGRES_USER=carsharing -e POSTGRES_PASSWORD=carsharing -p 5432:5432 postgres:17`).
 
@@ -56,7 +64,9 @@ curl -X DELETE http://127.0.0.1:8010/api/v1/cars/<id> -H "Authorization: Bearer 
 
 | Метод | Путь | Назначение | Доступ |
 |---|---|---|---|
-| GET | /health | Проверка живости сервиса | все |
+| GET | /health | Готовность: процесс и база данных (503, если база недоступна), состояние очереди (ПР7) | все |
+| GET | /health/live | Живость процесса без проверки зависимостей (ПР7) | все |
+| GET | /metrics | Метрики в формате Prometheus (ПР7); с `METRICS_TOKEN` — по Bearer-токену | все / по токену |
 | POST | /api/v1/auth/register | Регистрация клиента (201; 409, если email занят) | все |
 | POST | /api/v1/auth/login | Вход: access-токен (401 при неверных данных) | все |
 | GET | /api/v1/auth/me | Текущий пользователь | вход |
@@ -172,7 +182,7 @@ curl -X DELETE http://127.0.0.1:8010/api/v1/cars/<id> -H "Authorization: Bearer 
 pip install -r requirements.txt -r requirements-dev.txt   # + coverage и PyYAML
 ```
 
-**2. Запуск тестов** — одна команда, 334 теста (после ПР6), меньше минуты:
+**2. Запуск тестов** — одна команда, 352 теста (после ПР7), меньше минуты. Линтер — `ruff check .`:
 
 ```bash
 python manage.py test tests                 # Windows: test.cmd
@@ -189,7 +199,7 @@ python -m coverage report                   # таблица в консоли
 python -m coverage html                     # отчёт по строкам: htmlcov/index.html
 ```
 
-Покрытие — **97,7 %** (строки 98,3 %, ветвления 93,3 %; в ПР5 — 97,9 %). Слабее всего покрыты действия
+Покрытие — **97,8 %** (строки 98,4 %, ветвления 93,7 %; в ПР5 — 97,9 %). Слабее всего покрыты действия
 админки Django (88,6 %) и методы `__str__` моделей — это интерфейс сотрудников, он проверялся
 вручную. Остальные пропуски — защитные ветки на случай гонок и неизвестных ошибок базы, до
 которых нельзя дойти через API. Разбор по модулям — в

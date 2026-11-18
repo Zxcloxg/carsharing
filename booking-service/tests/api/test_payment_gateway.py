@@ -5,8 +5,8 @@ fleet.payment_gateway.charge — запрос, заголовок идемпот
 разбор ответов 201 / 402 / 503 / «нет соединения».
 """
 import socket
-import time
 import threading
+import time
 from argparse import Namespace
 from decimal import Decimal
 from http.server import ThreadingHTTPServer

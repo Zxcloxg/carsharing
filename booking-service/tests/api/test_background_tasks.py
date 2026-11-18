@@ -444,6 +444,7 @@ class WorkerLoopTests(PaymentQueueTestCase):
         with provider(PaymentDeclined("declined")), self.assertLogs("fleet.payments", "ERROR"):
             self.run_worker()
         from django.contrib.admin.sites import site
+
         from jobs.admin import BackgroundTaskAdmin
 
         admin = BackgroundTaskAdmin(BackgroundTask, site)

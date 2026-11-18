@@ -1,5 +1,7 @@
 # Каршеринг — учебный проект (микросервисы)
 
+[![CI](https://github.com/Zxcloxg/carsharing/actions/workflows/ci.yml/badge.svg)](https://github.com/Zxcloxg/carsharing/actions/workflows/ci.yml)
+
 Монорепозиторий проекта поминутной аренды автомобилей (каршеринг).
 Разбит на два независимых микросервиса на разных фреймворках, чтобы каждый
 решал свою задачу подходящим инструментом.
@@ -48,6 +50,10 @@
 carsharing/
 ├── README.md
 ├── .gitignore
+├── docker-compose.yml       # ПР7: вся система одной командой
+├── .env.example             # ПР7: переменные для docker compose (без значений)
+├── deploy_check.py          # ПР7: финальная проверка в контейнерах -> docs/deploy-check.md
+├── .github/workflows/ci.yml # ПР7: CI — линтер, тесты, сборка образов, запуск системы
 ├── docs/
 │   ├── requirements.md      # бизнес-задача, user stories, критерии приёмки
 │   ├── api.md               # ПР2: сущность Car, URI, валидация, формат ошибок
@@ -61,6 +67,8 @@ carsharing/
 │   ├── security-check*.md   # ПР5: протоколы проверки безопасности до и после исправлений
 │   ├── background-tasks.md  # ПР6: фоновое списание — выбор, устройство, повторы, логи
 │   ├── async-scenario.md    # ПР6: протокол проверки штатного и ошибочного пути
+│   ├── deployment.md        # ПР7: Docker, compose, секреты, health, логи и метрики, CI
+│   ├── deploy-check.md      # ПР7: протокол проверки системы «с нуля» в контейнерах
 │   ├── backlog.md           # бэклог на семестр для Kanban
 │   ├── architecture.drawio  # редактируемая схема
 │   ├── architecture.svg
@@ -71,10 +79,24 @@ carsharing/
 
 ## Как запустить
 
+### Вся система в Docker (ПР7) — рекомендуемый способ
+
+```bash
+cp .env.example .env                   # заполнить DB_PASSWORD, DJANGO_SECRET_KEY, JWT_SECRET
+docker compose up -d --build --wait    # база, миграции, API, обработчик задач, эмулятор провайдера, телеметрия
+curl http://localhost:8010/health      # {"status": "ok", "checks": {"database": {"status": "ok", ...}, ...}}
+```
+
+Миграции применяются автоматически (сервис `migrate`), данные базы хранятся в томе `pgdata`,
+логи — JSON в `docker compose logs`, метрики — `GET /metrics`. Подробно — в
+[`docs/deployment.md`](docs/deployment.md).
+
+### Без Docker
+
 Нужен Python 3.12+. Каждый сервис запускается независимо.
 Фоновые задачи `booking-service` выполняет отдельный процесс-обработчик (ПР6, см. ниже).
 
-### booking-service (Django, порт 8010)
+#### booking-service (Django, порт 8010)
 
 ```bash
 cd booking-service
@@ -89,7 +111,7 @@ python payment_provider_stub.py              # в третьем: эмулято
 Проверка: `curl http://127.0.0.1:8010/health`
 → `{"status":"ok","service":"booking-service","framework":"django", ...}`
 
-### telemetry-service (Flask, порт 8020)
+#### telemetry-service (Flask, порт 8020)
 
 ```bash
 cd telemetry-service
@@ -174,20 +196,20 @@ ER-диаграмма, ограничения, индексы и транзак�
 
 Автотесты `booking-service` лежат в [`booking-service/tests/`](booking-service/tests):
 109 модульных (бизнес-правила, валидация, токены и права, политика повторов — без базы и
-сети), 180 API- и интеграционных (эндпоинты через тестовый клиент, позитивные и негативные
-сценарии, очередь задач и вызов платёжного провайдера) и 45 тестов безопасности (числа —
-после ПР6). Каждый тест работает в транзакции, которая откатывается, на отдельной
+сети), 198 API- и интеграционных (эндпоинты через тестовый клиент, позитивные и негативные
+сценарии, очередь задач, вызов платёжного провайдера, health-check и метрики) и 45 тестов
+безопасности (числа — после ПР7). Каждый тест работает в транзакции, которая откатывается, на отдельной
 базе `test_<DB_NAME>`; тесты проходят в любом порядке (`--shuffle`).
 
 ```bash
 cd booking-service
 pip install -r requirements.txt -r requirements-dev.txt
-python manage.py test tests                                    # 334 теста (Windows: test.cmd)
+python manage.py test tests                                    # 352 теста (Windows: test.cmd)
 python -m coverage run manage.py test tests && python -m coverage report   # Windows: coverage.cmd
 python -m coverage html                                        # отчёт: booking-service/htmlcov/index.html
 ```
 
-**Покрытие — 97,7 %** (строки 98,3 %, ветвления 93,3 %; в ПР5 было 97,9 %). Доступ, маршруты, схемы и команды
+**Покрытие — 97,8 %** (строки 98,4 %, ветвления 93,7 %; в ПР5 было 97,9 %). Доступ, маршруты, схемы и команды
 покрыты полностью. Слабее всего покрыты действия админки Django (88,6 %), которые проверялись
 вручную, и защитные ветки на случай гонок, до которых не дойти через API. Подробности — в
 [`docs/testing.md`](docs/testing.md).
@@ -232,3 +254,31 @@ python -m coverage html                                        # отчёт: boo
 восстановление, а затем пишет протокол [`docs/async-scenario.md`](docs/async-scenario.md).
 Устройство, обоснование механизма и ручная проверка описаны в
 [`docs/background-tasks.md`](docs/background-tasks.md).
+
+## Контейнеризация, развёртывание и наблюдаемость (ПР7)
+
+- **Образы.** `booking-service/Dockerfile` и `telemetry-service/Dockerfile` построены на
+  `python:3.12-slim`. Зависимости ставятся отдельным кэшируемым слоем, процесс работает не от
+  root, API запускает production-сервер gunicorn. Один образ booking-service выполняет четыре
+  роли: `api`, `worker`, `migrate`, `provider`.
+- **docker-compose.yml.** PostgreSQL с именованным томом, одноразовый шаг миграций, API,
+  обработчик фоновых задач, эмулятор провайдера и телеметрия. Сервисы находятся в одной сети и
+  обращаются друг к другу по имени. Порядок старта: база healthy → миграции завершились → API и
+  worker.
+- **Секреты.** Значения задаются только в `.env` (файл в `.gitignore`); в compose-файле есть
+  лишь ссылки `${VAR:?…}`. В CI секреты генерируются случайно.
+- **Проверка состояния.** `/health` проверяет базу (`SELECT 1`) и очередь и отвечает 503, если
+  база недоступна. По нему docker compose помечает контейнер healthy или unhealthy. Отдельно
+  есть `/health/live` — только процесс.
+- **Наблюдаемость.** JSON-логи с `request_id`: заголовок `X-Request-ID` возвращается в ответе.
+  Каждый запрос оставляет строку с маршрутом, кодом и длительностью, а задачи очереди — строки
+  с `task_id`. `GET /metrics` отдаёт метрики в формате Prometheus: запросы по маршрутам и кодам,
+  гистограмму времени ответа, очередь задач, платежи и доступность базы.
+- **CI.** [`.github/workflows/ci.yml`](.github/workflows/ci.yml) запускается на каждый push: линтер
+  `ruff`, проверка миграций, 352 теста с покрытием не ниже 95 % на временной PostgreSQL, затем
+  сборка образов, `docker compose up --wait` и проверка `/health`, входа и каталога. Статус —
+  бейдж в начале README.
+
+Финальная проверка «с нуля» в контейнерах (`python deploy_check.py`) повторяет сценарии ПР2–ПР6.
+Протокол — [`docs/deploy-check.md`](docs/deploy-check.md), подробности — в
+[`docs/deployment.md`](docs/deployment.md).

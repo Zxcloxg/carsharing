@@ -55,7 +55,7 @@ class RouteProtectionTests(ApiTestCase):
     def test_invalid_token_gets_401_even_on_public_route(self):
         """Испорченный токен — всегда 401: клиент должен узнать, что токен больше не работает."""
         self.client.credentials(HTTP_AUTHORIZATION="Bearer broken.token.value")
-        for (method, template), level in sorted(ACCESS.items()):
+        for method, template in sorted(ACCESS):
             with self.subTest(route=f"{method} {template}"):
                 self.assertError(self._call(method, template), 401, "invalid_token")
 

@@ -77,6 +77,8 @@ INSTALLED_APPS = [
 ]
 
 MIDDLEWARE = [
+    # ПР7: request_id и строка лога на каждый запрос, метрики — первым, чтобы мерить всё остальное.
+    'config.observability.RequestContextMiddleware',
     'django.middleware.security.SecurityMiddleware',
     'django.contrib.sessions.middleware.SessionMiddleware',
     'django.middleware.common.CommonMiddleware',
@@ -177,6 +179,12 @@ USE_TZ = True
 # https://docs.djangoproject.com/en/6.1/howto/static-files/
 
 STATIC_URL = 'static/'
+# ПР7: в образе статика админки собирается при сборке (collectstatic) и раздаётся WhiteNoise —
+# gunicorn сам статику не отдаёт. Локально (runserver) папки нет, и WhiteNoise не подключается.
+STATIC_ROOT = BASE_DIR / 'staticfiles'
+if STATIC_ROOT.is_dir():
+    MIDDLEWARE.insert(MIDDLEWARE.index('django.middleware.security.SecurityMiddleware') + 1,
+                      'whitenoise.middleware.WhiteNoiseMiddleware')
 
 
 # Email
@@ -251,17 +259,31 @@ PAYMENT_PROVIDER_TIMEOUT = float(os.environ.get('PAYMENT_PROVIDER_TIMEOUT', '5')
 DEFAULT_FROM_EMAIL = os.environ.get('DEFAULT_FROM_EMAIL', 'receipts@carsharing.kz')
 
 
+# Метрики (ПР7): GET /metrics. Если токен задан — только с заголовком Authorization: Bearer <токен>.
+METRICS_TOKEN = os.environ.get('METRICS_TOKEN', '')
+
+
 # Logging
-# Сообщения о подключении к БД и работе сервиса — в консоль.
+# Сообщения о подключении к БД и работе сервиса — в консоль (stdout контейнера).
+# LOG_FORMAT=json (так в docker-compose.yml) — одна строка JSON на событие с полями time, level,
+# logger, message, request_id/task_id и подробностями; plain — читаемый текст для локальной работы.
+
+LOG_FORMAT = os.environ.get('LOG_FORMAT', 'plain')
 
 LOGGING = {
     'version': 1,
     'disable_existing_loggers': False,
+    'filters': {
+        'context': {'()': 'config.observability.ContextFilter'},
+    },
     'formatters': {
-        'plain': {'format': '[{asctime}] {levelname} {name}: {message}', 'style': '{'},
+        'plain': {'()': 'config.observability.TextFormatter', 'format': '[{asctime}] {levelname} {name}: {message}',
+                  'style': '{'},
+        'json': {'()': 'config.observability.JsonFormatter'},
     },
     'handlers': {
-        'console': {'class': 'logging.StreamHandler', 'formatter': 'plain'},
+        'console': {'class': 'logging.StreamHandler', 'formatter': 'json' if LOG_FORMAT == 'json' else 'plain',
+                    'filters': ['context']},
     },
     'loggers': {
         'config': {'handlers': ['console'], 'level': 'INFO'},
@@ -269,5 +291,9 @@ LOGGING = {
         'accounts': {'handlers': ['console'], 'level': 'INFO'},
         # Очередь: постановка задачи, попытки, повторы, окончательный сбой (ПР6).
         'jobs': {'handlers': ['console'], 'level': 'INFO'},
+        # ПР7: строка на каждый HTTP-запрос и результат проверки здоровья.
+        'config.requests': {'handlers': ['console'], 'level': os.environ.get('ACCESS_LOG_LEVEL', 'INFO'),
+                            'propagate': False},
+        'health': {'handlers': ['console'], 'level': 'INFO'},
     },
 }

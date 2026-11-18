@@ -79,8 +79,8 @@ class CarRepository:
         try:
             with transaction.atomic():
                 Car.objects.filter(pk=parse_id(car_id)).delete()
-        except ProtectedError:
-            raise CarHasBookings(details=[{"field": "id", "message": f"Car {car_id} has bookings"}])
+        except ProtectedError as exc:
+            raise CarHasBookings(details=[{"field": "id", "message": f"Car {car_id} has bookings"}]) from exc
 
     # --- внутреннее -------------------------------------------------------
     def _find(self, car_id):
