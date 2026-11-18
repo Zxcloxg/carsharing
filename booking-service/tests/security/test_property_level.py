@@ -22,6 +22,8 @@ from tests.helpers import (
 
 
 class CarFieldsByRoleTests(ApiTestCase):
+    """Оператор меняет у машины только статус и топливо, администратор — любые поля."""
+
     def setUp(self):
         super().setUp()
         self.car = fleet_services.create_car({**VALID_CAR, "status": "free"})
@@ -65,6 +67,8 @@ class CarFieldsByRoleTests(ApiTestCase):
 
 
 class ServerControlledFieldsTests(ApiTestCase):
+    """Поля, которые задаёт сервер (роль, тариф брони, статус клиента, хэш), из запроса не принимаются."""
+
     def test_role_cannot_be_set_at_registration(self):
         response = self.client.post(
             REGISTER, {"email": "evil@test.kz", "password": TEST_PASSWORD, "role": "admin"}, format="json"

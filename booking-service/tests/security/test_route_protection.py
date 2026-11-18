@@ -17,6 +17,8 @@ DENIED_FOR = {
 
 
 class RouteProtectionTests(ApiTestCase):
+    """Каждый метод каждого маршрута от имени анонима и всех ролей: 401, 403 или доступ."""
+
     def _call(self, method, template):
         """Запрос к маршруту с несуществующим id; у изменяющих методов — пустое JSON-тело."""
         data = "{}" if method in ("POST", "PUT", "PATCH") else ""

@@ -21,6 +21,8 @@ def key_for(user=None, **meta):
 
 
 class ClientAddressTests(SimpleTestCase):
+    """Ключ ограничителя частоты — адрес клиента, а не присланный заголовок или токен."""
+
     def test_key_is_remote_address(self):
         self.assertEqual(key_for(REMOTE_ADDR="198.51.100.1"), "throttle_login_198.51.100.1")
 

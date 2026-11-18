@@ -39,6 +39,8 @@ class BillableMinutesTests(SimpleTestCase):
 
 
 class RentalCostTests(SimpleTestCase):
+    """Стоимость аренды: тариф брони × оплачиваемые минуты, точные деньги в Decimal."""
+
     def test_cost_is_price_times_minutes(self):
         cost = domain.rental_cost(Decimal("80.00"), START, START + timedelta(minutes=12, seconds=30))
         self.assertEqual(cost, Decimal("1040.00"))  # 13 минут по 80 ₸
@@ -62,6 +64,8 @@ class RentalCostTests(SimpleTestCase):
 
 
 class AgeTests(SimpleTestCase):
+    """Полный возраст и допуск 18+, включая родившихся 29 февраля."""
+
     def test_age_counts_full_years(self):
         self.assertEqual(domain.age_on(date(2000, 6, 15), date(2026, 6, 14)), 25)
         self.assertEqual(domain.age_on(date(2000, 6, 15), date(2026, 6, 15)), 26)
@@ -109,6 +113,8 @@ class CanRentTests(SimpleTestCase):
 
 
 class LicenseRulesTests(SimpleTestCase):
+    """Водительское удостоверение: категория B и корректные даты."""
+
     TODAY = date(2026, 11, 11)
 
     def test_categories_normalized(self):
@@ -144,6 +150,8 @@ class LicenseRulesTests(SimpleTestCase):
 
 
 class PaginationTests(SimpleTestCase):
+    """Смещение страницы и число страниц."""
+
     def test_offset(self):
         self.assertEqual(domain.page_offset(1, 10), 0)
         self.assertEqual(domain.page_offset(3, 25), 50)
@@ -162,6 +170,8 @@ class PaginationTests(SimpleTestCase):
 
 
 class CarRulesTests(SimpleTestCase):
+    """Нормализация госномера и допустимый год выпуска."""
+
     def test_plate_normalized(self):
         self.assertEqual(domain.normalize_plate("  123abc02 "), "123ABC02")
 

@@ -26,6 +26,8 @@ def errors_of(serializer):
 
 
 class CarValidationTests(SimpleTestCase):
+    """Схема машины: госномер, цена, топливо, статус, лимит страницы."""
+
     def test_valid_car_gets_defaults(self):
         body = CarSerializer(data={k: v for k, v in VALID_CAR.items() if k not in ("color", "fuel_level")})
         self.assertTrue(body.is_valid(), body.errors)
@@ -61,6 +63,8 @@ class CarValidationTests(SimpleTestCase):
 
 
 class CustomerValidationTests(SimpleTestCase):
+    """Схема клиента: возраст 18+, формат телефона, лишние поля отбрасываются."""
+
     def test_valid_customer(self):
         body = CustomerSerializer(data={**VALID_CUSTOMER, "email": "Aigerim@Example.KZ"})
         self.assertTrue(body.is_valid(), body.errors)
@@ -84,6 +88,8 @@ class CustomerValidationTests(SimpleTestCase):
 
 
 class DriverLicenseValidationTests(SimpleTestCase):
+    """Схема ВУ и решения оператора: категория B, срок действия, причина отказа."""
+
     def test_valid_license_normalized(self):
         body = DriverLicenseSerializer(data={**VALID_LICENSE, "number": "kz0123456", "categories": "b,c"})
         self.assertTrue(body.is_valid(), body.errors)
@@ -111,6 +117,8 @@ class DriverLicenseValidationTests(SimpleTestCase):
 
 
 class BookingValidationTests(SimpleTestCase):
+    """Схема брони: тариф и статус из тела не принимаются, car_id — UUID."""
+
     def test_price_and_status_from_body_are_ignored(self):
         """Тариф и статус брони задаёт сервер; присланные клиентом значения отбрасываются."""
         body = BookingCreateSerializer(data={
@@ -125,6 +133,8 @@ class BookingValidationTests(SimpleTestCase):
 
 
 class AccountValidationTests(SimpleTestCase):
+    """Схемы регистрации, входа и управления пользователями."""
+
     def test_email_normalized(self):
         body = RegisterSerializer(data={"email": "  New@Test.KZ ", "password": "Tiger#Moon2026"})
         self.assertTrue(body.is_valid(), body.errors)

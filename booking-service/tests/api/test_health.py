@@ -3,6 +3,8 @@ from tests.helpers import ApiTestCase
 
 
 class HealthTests(ApiTestCase):
+    """GET /health отвечает без токена."""
+
     def test_health(self):
         for path in ("/health", "/health/"):
             with self.subTest(path=path):

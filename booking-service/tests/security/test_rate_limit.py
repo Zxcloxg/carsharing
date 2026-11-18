@@ -15,6 +15,8 @@ LIMIT = 10
 
 
 class LoginRateLimitTests(ApiTestCase):
+    """Лимит попыток входа: 429 после 10 попыток, обход через X-Forwarded-For и чужой токен не работает."""
+
     def setUp(self):
         super().setUp()
         make_account(Role.ADMIN, email="admin@test.kz")
@@ -72,6 +74,8 @@ class LoginRateLimitTests(ApiTestCase):
 
 
 class RegisterRateLimitTests(ApiTestCase):
+    """Лимит регистраций с одного адреса."""
+
     def test_mass_registration_is_throttled(self):
         for n in range(LIMIT):
             self.client.post(REGISTER, {"email": f"bot{n}@test.kz", "password": TEST_PASSWORD}, format="json")
@@ -87,6 +91,8 @@ class RegisterRateLimitTests(ApiTestCase):
 
 
 class ThrottleSettingsTests(ApiTestCase):
+    """Число доверенных прокси задано явно."""
+
     def test_proxy_count_is_configured(self):
         """NUM_PROXIES=None означает «верить X-Forwarded-For целиком» — так оставлять нельзя."""
         self.assertIsNotNone(api_settings.NUM_PROXIES)

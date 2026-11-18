@@ -13,6 +13,8 @@ from tests.helpers import LOGIN, ME, REGISTER, TEST_PASSWORD, VALID_CAR, ApiTest
 
 
 class PasswordStorageTests(ApiTestCase):
+    """Пароль хранится только как хэш Argon2id с солью; база не принимает открытый пароль."""
+
     def test_password_is_stored_as_argon2_hash(self):
         self.client.post(REGISTER, {"email": "a@test.kz", "password": TEST_PASSWORD}, format="json")
         stored = User.objects.get(email="a@test.kz").password_hash
@@ -44,6 +46,8 @@ class PasswordStorageTests(ApiTestCase):
 
 
 class RegisterTests(ApiTestCase):
+    """POST /auth/register: успешная регистрация, занятый email, слабый пароль, попытка выбрать роль."""
+
     def _register(self, **body):
         return self.client.post(REGISTER, {"email": "new@test.kz", "password": TEST_PASSWORD, **body}, format="json")
 
@@ -101,6 +105,8 @@ class RegisterTests(ApiTestCase):
 
 
 class LoginTests(ApiTestCase):
+    """POST /auth/login: выдача токена, неверный пароль, заблокированный аккаунт, лимит попыток."""
+
     def setUp(self):
         super().setUp()
         self.user = make_account(Role.OPERATOR, email="op@test.kz")
@@ -163,6 +169,8 @@ class LoginTests(ApiTestCase):
 
 
 class TokenTests(ApiTestCase):
+    """Проверка токена на защищённом маршруте: нет токена, мусор, чужая подпись, alg=none, истёк срок."""
+
     def setUp(self):
         super().setUp()
         self.admin = make_account(Role.ADMIN)

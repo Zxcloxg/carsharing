@@ -23,6 +23,8 @@ from .routes import api_routes
 
 
 class DjangoSettingsTests(SimpleTestCase):
+    """DEBUG и SECRET_KEY берутся из окружения; без надёжного ключа сервис не стартует."""
+
     def _settings_with(self, **env):
         """Модуль настроек, заново прочитанный с заданным окружением (без файла .env)."""
         import config.settings as module
@@ -63,6 +65,8 @@ class DjangoSettingsTests(SimpleTestCase):
 
 
 class SecurityHeadersTests(ApiTestCase):
+    """Ответы API несут защитные заголовки."""
+
     def test_api_response_headers(self):
         response = self.client.get("/api/v1/cars")
         self.assertEqual(response["Content-Type"], "application/json")
@@ -72,6 +76,8 @@ class SecurityHeadersTests(ApiTestCase):
 
 
 class ApiInventoryTests(SimpleTestCase):
+    """Маршруты в коде и в openapi.yaml совпадают — незадокументированных эндпоинтов нет."""
+
     def test_contract_matches_code(self):
         spec = yaml.safe_load((Path(settings.BASE_DIR) / "openapi.yaml").read_text(encoding="utf-8"))
         documented = {
@@ -83,6 +89,8 @@ class ApiInventoryTests(SimpleTestCase):
 
 
 class EnvFlagTests(SimpleTestCase):
+    """Разбор логических флагов окружения (DJANGO_DEBUG)."""
+
     def test_parsing(self):
         from config.settings import env_flag
 

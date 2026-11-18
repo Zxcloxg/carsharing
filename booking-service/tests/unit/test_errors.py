@@ -11,6 +11,8 @@ def handle(exc):
 
 
 class FlattenTests(SimpleTestCase):
+    """Вложенные ошибки валидации разворачиваются в плоский список {field, message}."""
+
     def test_nested_errors_become_flat_list(self):
         details = _flatten({"plate": ["Required."], "driver": {"phone": ["Bad format.", "Too short."]}})
         self.assertEqual(details, [
@@ -24,6 +26,8 @@ class FlattenTests(SimpleTestCase):
 
 
 class HandlerTests(SimpleTestCase):
+    """Глобальный обработчик приводит доменные, DRF- и непредвиденные ошибки к единому формату."""
+
     def test_domain_error(self):
         response = handle(PlateAlreadyUsed(details=[{"field": "plate", "message": "taken"}]))
         self.assertEqual(response.status_code, 409)

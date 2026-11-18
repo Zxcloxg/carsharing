@@ -16,7 +16,13 @@ python manage.py migrate           # вся схема с нуля, включа
 python manage.py seed_demo         # демо-данные и демо-пользователи всех ролей (необязательно)
 python manage.py create_user admin@carsharing.kz --role admin   # или свой первый администратор
 python manage.py runserver 8010
+python manage.py run_worker        # отдельное окно: обработчик фоновых задач (ПР6), Windows: worker.cmd
+python payment_provider_stub.py    # отдельное окно: эмулятор платёжного провайдера, Windows: payment_provider.cmd
 ```
+Без обработчика API работает, но платежи за поездки остаются в статусе `pending`: списание
+ждёт в очереди и выполнится, как только обработчик запустится. Подробно — в
+[`../docs/background-tasks.md`](../docs/background-tasks.md).
+
 При старте в логе: `INFO config.db: Подключение к базе данных установлено: PostgreSQL 17.6, ...`.
 Без переменных окружения (в том числе `JWT_SECRET` не короче 32 символов и
 `DJANGO_SECRET_KEY` не короче 50) сервис не стартует. Режим отладки по умолчанию выключен;
@@ -74,8 +80,12 @@ curl -X DELETE http://127.0.0.1:8010/api/v1/cars/<id> -H "Authorization: Bearer 
 | GET | /api/v1/bookings | Список броней: `page`/`limit`, фильтры `car_id`, `customer_id`, `status` | вход (клиент — свои) |
 | POST | /api/v1/bookings | Забронировать машину (транзакция; только клиент с подтверждённым ВУ) | вход (клиент — на себя) |
 | GET | /api/v1/bookings/{id} | Получить бронь | вход (своя) |
-| PATCH | /api/v1/bookings/{id} | Завершить (с оплатой) или отменить бронь (транзакция) | вход (своя) |
+| PATCH | /api/v1/bookings/{id} | Завершить или отменить бронь (транзакция); при завершении — платёж `pending`, списание в фоне (ПР6) | вход (своя) |
 | GET | /api/v1/bookings/{id}/payments | Платежи по аренде | вход (свои) |
+| POST | /api/v1/bookings/{id}/payments | Повторить оплату после сбоя: 202 Accepted + `Location` (ПР6) | вход (своя) |
+| GET | /api/v1/payments/{id} | Статус платежа и его фоновой задачи (ПР6) | вход (свой) |
+| GET | /api/v1/tasks | Очередь фоновых задач: фильтры `status`, `task` (ПР6) | staff |
+| GET | /api/v1/tasks/{id} | Задача: попытки, причины сбоев, результат (ПР6) | staff |
 | —  | /admin/ | Админка Django (для операторов, вход по `auth_user`) | — |
 
 Все ошибки — в едином формате `{"error": {"code", "message", "details"}}`
@@ -113,13 +123,29 @@ curl -X DELETE http://127.0.0.1:8010/api/v1/cars/<id> -H "Authorization: Bearer 
 | `fleet/views.py` | Маршруты: разбор запроса и коды ответов |
 | `fleet/serializers.py` | Валидация входных данных (схемы/DTO) |
 | `fleet/domain.py` | Правила предметной области — чистые функции без базы: тарификация, возраст, допуск к аренде, ВУ, пагинация (ПР5) |
-| `fleet/services.py` | Бизнес-логика и транзакции: уникальность номера, бронирование, оплата; правила берёт из `domain.py` |
+| `fleet/services.py` | Бизнес-логика и транзакции: уникальность номера, бронирование, постановка и результат списания, повторная оплата; правила берёт из `domain.py` |
+| `fleet/tasks.py` | Фоновые задачи `charge_payment` и `send_receipt` (`@task` из `django.tasks`), перевод платежа в `failed` по сигналу (ПР6) |
+| `fleet/payment_gateway.py` | HTTP-клиент платёжного провайдера: тайм-аут, ключ идемпотентности, временные и окончательные ошибки (ПР6) |
 | `fleet/repositories/` | Слой доступа к данным, по модулю на сущность: `cars`, `car_models`, `customers`, `driver_licenses`, `bookings`, `payments`, `car_status_history` — единственное место с ORM-вызовами |
 | `fleet/models.py` | 10 моделей с ограничениями и индексами (см. `docs/database.md`) |
 | `fleet/admin.py` | Админка оператора: клиенты и ВУ, автопарк с опциями, аренды и платежи, инциденты |
-| `fleet/migrations/` | `0001` — вся схема, `0002` — индекс `cars_status_created_idx` |
+| `fleet/migrations/` | `0001` — вся схема, `0002` — индекс `cars_status_created_idx`, `0003` — поля платежа для фонового списания |
 | `fleet/management/commands/` | `seed_demo`, `demo_transaction` (демонстрация отката) |
 | `fleet/errors.py` | Доменные исключения с HTTP-кодом и машиночитаемым `code` |
+
+### `jobs` — очередь фоновых задач (ПР6)
+
+| Файл | Ответственность |
+|---|---|
+| `jobs/models.py` | Таблица `background_tasks`: задача, аргументы, статус, попытки, `run_after`, ошибки, результат |
+| `jobs/backends.py` | Бэкенд `django.tasks`: постановка задачи `INSERT`-ом в транзакции вызывающего, чтение статуса |
+| `jobs/worker.py` | Обработчик: выбор задачи (`FOR UPDATE SKIP LOCKED`), выполнение, повтор с паузой, окончательный сбой, перехват зависших задач, логи |
+| `jobs/retry.py` | Политика повторов: экспоненциальная пауза, временные и окончательные ошибки |
+| `jobs/services.py`, `views.py`, `urls.py` | Статус задач для API (`/api/v1/tasks`) |
+| `jobs/admin.py` | Очередь в админке, действие «Запустить заново» |
+| `jobs/management/commands/run_worker.py` | `python manage.py run_worker [--once] [--interval 1]` |
+| `payment_provider_stub.py` | Эмулятор платёжного провайдера (порт 8030; `--latency`, `--fail-first`, `--decline-over`) |
+| `async_check.py` | Проверка штатного и ошибочного пути на живых процессах -> `../docs/async-scenario.md` |
 
 ### `tests/` — автотесты (ПР5)
 
@@ -146,11 +172,11 @@ curl -X DELETE http://127.0.0.1:8010/api/v1/cars/<id> -H "Authorization: Bearer 
 pip install -r requirements.txt -r requirements-dev.txt   # + coverage и PyYAML
 ```
 
-**2. Запуск тестов** — одна команда, 278 тестов, около 30 секунд:
+**2. Запуск тестов** — одна команда, 334 теста (после ПР6), меньше минуты:
 
 ```bash
 python manage.py test tests                 # Windows: test.cmd
-python manage.py test tests.unit            # только модульные (99), база не нужна
+python manage.py test tests.unit            # только модульные (109), база не нужна
 python manage.py test tests.security        # только безопасность (45)
 python manage.py test tests --shuffle       # случайный порядок: тесты не зависят друг от друга
 ```
@@ -163,7 +189,7 @@ python -m coverage report                   # таблица в консоли
 python -m coverage html                     # отчёт по строкам: htmlcov/index.html
 ```
 
-Покрытие — **97,9 %** (строки 98,3 %, ветвления 94,9 %). Слабее всего покрыты действия
+Покрытие — **97,7 %** (строки 98,3 %, ветвления 93,3 %; в ПР5 — 97,9 %). Слабее всего покрыты действия
 админки Django (88,6 %) и методы `__str__` моделей — это интерфейс сотрудников, он проверялся
 вручную. Остальные пропуски — защитные ветки на случай гонок и неизвестных ошибок базы, до
 которых нельзя дойти через API. Разбор по модулям — в
@@ -173,7 +199,8 @@ python -m coverage html                     # отчёт по строкам: ht
 
 ```bash
 ./auth_check.cmd       # ПР4: 35 сценариев доступа -> ../docs/auth-check.md
-./security_check.cmd   # ПР5: 70 проверок безопасности -> ../docs/security-check.md
+./security_check.cmd   # ПР5: проверки безопасности (с ПР6 — 76) -> ../docs/security-check.md
+./async_check.cmd      # ПР6: штатный путь и сбой провайдера -> ../docs/async-scenario.md (сам запускает процессы)
 python manage.py demo_transaction   # откат транзакций бронирования и завершения аренды при сбое
 ```
 

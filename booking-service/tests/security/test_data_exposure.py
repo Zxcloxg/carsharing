@@ -29,6 +29,8 @@ def sensitive_keys(data, prefix=""):
 
 
 class DataExposureTests(ApiTestCase):
+    """В ответах нет пароля, хэша и секретов ни на какой глубине."""
+
     def setUp(self):
         super().setUp()
         self.admin = make_account(Role.ADMIN, email="admin@test.kz")

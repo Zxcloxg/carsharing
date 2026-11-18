@@ -63,6 +63,10 @@ PROTECTED_ROUTES = [
     ("GET", "/bookings/{id}", "auth"),
     ("PATCH", "/bookings/{id}", "auth"),
     ("GET", "/bookings/{id}/payments", "auth"),
+    ("POST", "/bookings/{id}/payments", "auth"),
+    ("GET", "/payments/{id}", "auth"),
+    ("GET", "/tasks", "staff"),
+    ("GET", "/tasks/{id}", "staff"),
 ]
 
 opener = urllib.request.build_opener(urllib.request.ProxyHandler({}))

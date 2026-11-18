@@ -243,8 +243,21 @@ erDiagram
 | `amount` | numeric(10,2) | CHECK `> 0` | Сумма, ₸ |
 | `status` | varchar(10) | CHECK in (`pending`, `paid`, `failed`, `refunded`) | |
 | `provider_payment_id` | varchar(64) | NULL, UNIQUE | Идентификатор операции у провайдера — защита от двойного учёта |
+| `task_id` | uuid | NULL | ПР6: фоновая задача списания (`background_tasks.id`) |
+| `failure_reason` | text | NOT NULL при `failed` | ПР6: почему списание не прошло |
 | `created_at` | timestamptz | | |
 | `paid_at` | timestamptz | NOT NULL ⇔ `paid`/`refunded` | |
+
+С ПР6 платёж создаётся в статусе `pending` при завершении поездки, а `paid` или `failed` его
+делает фоновая задача. Частичный уникальный индекс `payments_one_pending_per_booking` не
+даёт запустить второе списание за поездку, пока идёт первое.
+
+### `background_tasks` — очередь фоновых задач (ПР6, приложение `jobs`)
+
+Служебная таблица вне предметной ER-диаграммы: одна строка — одна поставленная задача
+(`fleet.tasks.charge_payment`, `fleet.tasks.send_receipt`). Задача ставится `INSERT`-ом
+в транзакции бизнес-операции. Колонки, статусы и индекс выборки описаны в
+[`background-tasks.md`](background-tasks.md#3-как-это-работает).
 
 ### `car_status_history` — журнал статусов
 
@@ -335,6 +348,8 @@ Limit (actual rows=10)
 |---|---|
 | `0001_initial_schema` | Создаёт все 10 таблиц со всеми ключами, ограничениями и индексами, кроме `cars_status_created_idx` |
 | `0002_add_cars_status_index` | Правка схемы: составной индекс `cars_status_created_idx` |
+| `0003_payment_background_charge` | ПР6: колонки `payments.task_id`, `failure_reason` и два ограничения |
+| `jobs/0001_background_tasks` | ПР6: таблица очереди `background_tasks` с частичным индексом готовых задач |
 
 ```bash
 python manage.py migrate                 # вся схема с нуля

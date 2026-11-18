@@ -12,6 +12,8 @@ omit =
     security_check.py
     auth_check.py
     demo.py
+    async_check.py
+    payment_provider_stub.py
 
 [report]
 show_missing = True

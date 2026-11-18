@@ -12,6 +12,8 @@ USER = {"id": "6f1c8a52-3a51-4c43-9a8e-0f4c1d0b7e21", "role": "operator"}
 
 
 class TokenTests(SimpleTestCase):
+    """Выпуск и проверка JWT: срок, подпись, алгоритм, издатель, подмена данных."""
+
     def _payload(self, **overrides):
         now = datetime.now(timezone.utc)
         payload = {"sub": USER["id"], "role": "admin", "iss": settings.JWT_ISSUER, "iat": now,

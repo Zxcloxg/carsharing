@@ -6,6 +6,8 @@ import config.settings as production
 
 
 class ProductionHashingSettingsTests(SimpleTestCase):
+    """Рабочие настройки: Argon2id первым, слабых хэшеров нет."""
+
     def test_argon2id_with_default_cost_is_primary(self):
         """В рабочих настройках новые пароли хэширует Argon2id с параметрами Django по умолчанию."""
         self.assertEqual(production.PASSWORD_HASHERS[0], "django.contrib.auth.hashers.Argon2PasswordHasher")
@@ -20,6 +22,8 @@ class ProductionHashingSettingsTests(SimpleTestCase):
 
 
 class HashPropertiesTests(SimpleTestCase):
+    """Хэш в формате Argon2id, соль делает хэши разными, проверка пароля."""
+
     def test_hash_is_argon2id(self):
         encoded = make_password("Tiger#Moon2026")
         self.assertTrue(encoded.startswith("argon2$argon2id$"), encoded)

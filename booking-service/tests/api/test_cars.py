@@ -6,6 +6,8 @@ from tests.helpers import VALID_CAR, StaffApiTestCase
 
 
 class CarApiTests(StaffApiTestCase):
+    """CRUD /api/v1/cars, валидация, пагинация и фильтры, справочник моделей, журнал статусов."""
+
     def _create(self, **overrides):
         response = self.client.post("/api/v1/cars", {**VALID_CAR, **overrides}, format="json")
         self.assertEqual(response.status_code, status.HTTP_201_CREATED)

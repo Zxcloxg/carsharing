@@ -9,6 +9,7 @@
 приведены в README и предназначены только для локальной проверки.
 """
 from datetime import date
+from unittest import mock
 
 from django.core.management.base import BaseCommand
 from django.db import transaction
@@ -16,9 +17,10 @@ from django.db import transaction
 from accounts import services as account_services
 from accounts.models import Role
 from accounts.repository import UserRepository
-from fleet import services
+from fleet import payment_gateway, services
 from fleet.models import Car, CarFeature, CarModel, Feature, Incident
 from fleet.repositories import car_repository, customer_repository
+from jobs.worker import Worker
 
 CAR_MODELS = [
     ("Kia", "Rio", "sedan", 5, "petrol"),
@@ -125,6 +127,7 @@ class Command(BaseCommand):
         # Завершённая аренда с платежом и инцидентом по ней, а также текущая активная бронь.
         trip = services.create_booking({"car_id": cars["456DEF02"]["id"], "customer_phone": "+77027654321"})
         services.close_booking(trip["id"], "finished")
+        self._settle_history_payment()
         Incident.objects.create(
             car_id=cars["456DEF02"]["id"], booking_id=trip["id"], customer_id=trip["customer_id"],
             kind="dirty", description="Клиент сообщил о мусоре в салоне после поездки",
@@ -135,3 +138,16 @@ class Command(BaseCommand):
             f"Добавлено: моделей {len(CAR_MODELS)}, опций {len(FEATURES)}, машин {Car.objects.count()}, "
             f"клиентов {len(CUSTOMERS)}, аренд 2, инцидентов 1"
         ))
+
+    def _settle_history_payment(self):
+        """Платёж за прошлую поездку — уже списанный, как будто обработчик очереди отработал тогда.
+
+        Задачи очереди выполняются тут же тем же кодом, что и в run_worker, но вместо
+        внешнего провайдера — фиксированный ответ: демо-данные не должны зависеть от сети.
+        """
+        def history_charge(*, payment_id, **kwargs):
+            return f"seed-{payment_id[:8]}"
+
+        with mock.patch.object(payment_gateway, "charge", side_effect=history_charge):
+            Worker(worker_id="seed_demo").run_pending()
+

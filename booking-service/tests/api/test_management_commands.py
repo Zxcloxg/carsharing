@@ -19,6 +19,8 @@ def run(command, *args, **options):
 
 
 class SeedDemoTests(ApiTestCase):
+    """Команда seed_demo: заполняет все части домена, повторный запуск ничего не дублирует."""
+
     def test_fills_every_part_of_domain(self):
         run("seed_demo")
         self.assertEqual(Car.objects.count(), len(CARS))
@@ -47,6 +49,8 @@ class SeedDemoTests(ApiTestCase):
 
 
 class CreateUserTests(ApiTestCase):
+    """Команда create_user: роль, правила пароля, занятый email, ввод пароля с подтверждением."""
+
     def test_creates_admin(self):
         out, _ = run("create_user", "Boss@Carsharing.kz", role="admin", password="Steppe#Eagle2026")
         self.assertIn("Created admin boss@carsharing.kz", out)
@@ -74,6 +78,8 @@ class CreateUserTests(ApiTestCase):
 
 
 class DemoTransactionTests(ApiTestCase):
+    """Команда demo_transaction: сбойные транзакции не оставляют следов в базе."""
+
     def test_needs_demo_data(self):
         _, err = run("demo_transaction")
         self.assertIn("seed_demo", err)

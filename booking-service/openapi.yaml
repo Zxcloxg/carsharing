@@ -16,9 +16,16 @@ info:
     нужной роли или к чужой записи — 403. Публичны только /health, каталог
     машин (GET /api/v1/cars, GET /api/v1/cars/{id}), регистрация и вход.
 
+    В ПР6 списание за поездку вынесено в фоновую задачу: завершение брони
+    отвечает сразу, платёж создаётся в статусе pending, а обработчик очереди
+    (python manage.py run_worker) вызывает платёжного провайдера с повторами.
+    Статус списания — GET /api/v1/payments/{id}; повторная оплата после сбоя —
+    POST /api/v1/bookings/{id}/payments (202 Accepted); очередь целиком видит
+    персонал — GET /api/v1/tasks.
+
     Все ошибки возвращаются в едином формате:
     {"error": {"code": "...", "message": "...", "details": [{"field": "...", "message": "..."}]}}
-  version: 1.3.0
+  version: 1.4.0
 servers:
   - url: http://localhost:8010
     description: Локальный запуск
@@ -35,6 +42,8 @@ tags:
     description: Клиенты и верификация водительских удостоверений
   - name: bookings
     description: Брони, аренды и платежи
+  - name: tasks
+    description: Очередь фоновых задач (только персонал)
   - name: service
     description: Служебные эндпоинты
 
@@ -691,9 +700,11 @@ paths:
       tags: [bookings]
       summary: Завершить или отменить бронь
       description: |
-        Одна транзакция над четырьмя таблицами — закрыть бронь и посчитать
-        стоимость, при завершении записать платёж, освободить машину и
-        записать смену статуса в журнал.
+        Одна транзакция — закрыть бронь и посчитать стоимость, при завершении
+        создать платёж в статусе pending и поставить в очередь задачу его
+        списания, освободить машину и записать смену статуса в журнал.
+        Ответ не ждёт платёжного провайдера: списание выполняет фоновый
+        обработчик, его результат — GET /api/v1/payments/{payment.id}.
       operationId: closeBooking
       requestBody:
         required: true
@@ -706,10 +717,19 @@ paths:
                 status: { type: string, enum: [finished, cancelled] }
       responses:
         "200":
-          description: Бронь закрыта
+          description: Бронь закрыта; при завершении — с платежом, ожидающим списания
           content:
             application/json:
-              schema: { $ref: "#/components/schemas/Booking" }
+              schema:
+                allOf:
+                  - { $ref: "#/components/schemas/Booking" }
+                  - type: object
+                    properties:
+                      payment:
+                        nullable: true
+                        description: Платёж за поездку (null при отмене)
+                        allOf:
+                          - { $ref: "#/components/schemas/PaymentWithTask" }
         "400":
           $ref: "#/components/responses/ValidationError"
         "401":
@@ -742,6 +762,107 @@ paths:
                   items:
                     type: array
                     items: { $ref: "#/components/schemas/Payment" }
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+    post:
+      tags: [bookings]
+      summary: Повторить оплату завершённой поездки
+      description: |
+        Если списание не прошло (платёж failed), клиент или персонал запускает
+        его заново: создаётся новый платёж pending и новая фоновая задача.
+        Ответ — сразу 202 Accepted, заголовок Location указывает на платёж,
+        статус которого можно опрашивать.
+      operationId: retryBookingPayment
+      responses:
+        "202":
+          description: Списание поставлено в очередь
+          headers:
+            Location:
+              schema: { type: string, example: /api/v1/payments/6c1f2b8e-0d55-4b8e-9a51-3f1f0c7d2a10 }
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/PaymentWithTask" }
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "409":
+          description: Поездка не завершена (booking_not_payable), уже оплачена (payment_already_paid) или списание ещё идёт (payment_in_progress)
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+
+  /api/v1/payments/{id}:
+    parameters:
+      - { name: id, in: path, required: true, schema: { type: string, format: uuid } }
+    get:
+      tags: [bookings]
+      summary: Статус платежа и его фоновой задачи
+      operationId: getPayment
+      responses:
+        "200":
+          description: Платёж
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/PaymentWithTask" }
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+
+  /api/v1/tasks:
+    get:
+      tags: [tasks]
+      summary: Очередь фоновых задач (новые сверху)
+      operationId: listTasks
+      parameters:
+        - { name: page, in: query, schema: { type: integer, minimum: 1, default: 1 } }
+        - { name: limit, in: query, schema: { type: integer, minimum: 1, maximum: 100, default: 10 } }
+        - { name: status, in: query, schema: { type: string, enum: [READY, RUNNING, SUCCESSFUL, FAILED] } }
+        - { name: task, in: query, schema: { type: string, example: charge_payment } }
+      responses:
+        "200":
+          description: Страница задач
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  items:
+                    type: array
+                    items: { $ref: "#/components/schemas/Task" }
+                  page: { type: integer }
+                  limit: { type: integer }
+                  total: { type: integer }
+                  pages: { type: integer }
+        "400":
+          $ref: "#/components/responses/ValidationError"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+
+  /api/v1/tasks/{id}:
+    parameters:
+      - { name: id, in: path, required: true, schema: { type: string, format: uuid } }
+    get:
+      tags: [tasks]
+      summary: Статус и результат фоновой задачи
+      operationId: getTask
+      responses:
+        "200":
+          description: Задача
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Task" }
         "401":
           $ref: "#/components/responses/Unauthorized"
         "403":
@@ -919,9 +1040,58 @@ components:
         booking_id: { type: string, format: uuid }
         amount: { type: number, example: 260.0 }
         status: { type: string, enum: [pending, paid, failed, refunded] }
-        provider_payment_id: { type: string, nullable: true, example: stub-3f2a9c1b7d4e8a60 }
+        provider_payment_id: { type: string, nullable: true, example: ch_5b0c6f3e2a9d41c7b8e0 }
+        failure_reason:
+          type: string
+          nullable: true
+          description: Почему списание не прошло (только у failed)
+          example: "PaymentProviderUnavailable: Provider is unreachable at http://127.0.0.1:8030/v1/charges: [WinError 10061] ..."
+        task_id: { type: string, format: uuid, nullable: true, description: Фоновая задача списания }
         created_at: { type: string, format: date-time }
         paid_at: { type: string, format: date-time, nullable: true }
+    PaymentWithTask:
+      allOf:
+        - { $ref: "#/components/schemas/Payment" }
+        - type: object
+          properties:
+            task:
+              type: object
+              nullable: true
+              properties:
+                id: { type: string, format: uuid }
+                status: { type: string, enum: [READY, RUNNING, SUCCESSFUL, FAILED] }
+                attempts: { type: integer, example: 1 }
+                max_attempts: { type: integer, example: 3 }
+                next_attempt_at: { type: string, format: date-time, nullable: true }
+                last_error: { type: string, nullable: true }
+                finished_at: { type: string, format: date-time, nullable: true }
+    Task:
+      type: object
+      properties:
+        id: { type: string, format: uuid }
+        task: { type: string, example: charge_payment }
+        queue: { type: string, example: default }
+        status: { type: string, enum: [READY, RUNNING, SUCCESSFUL, FAILED] }
+        attempts: { type: integer }
+        max_attempts: { type: integer }
+        args: { type: array, items: {} }
+        kwargs: { type: object, example: { payment_id: 6c1f2b8e-0d55-4b8e-9a51-3f1f0c7d2a10 } }
+        enqueued_at: { type: string, format: date-time }
+        started_at: { type: string, format: date-time, nullable: true }
+        last_attempted_at: { type: string, format: date-time, nullable: true }
+        next_attempt_at: { type: string, format: date-time, nullable: true, description: Когда задачу возьмут снова (READY) }
+        finished_at: { type: string, format: date-time, nullable: true }
+        last_error: { type: string, nullable: true }
+        errors:
+          type: array
+          description: Сбои по попыткам (без стектрейсов)
+          items:
+            type: object
+            properties:
+              attempt: { type: integer }
+              at: { type: string, format: date-time }
+              message: { type: string }
+        return_value: { nullable: true, description: Результат успешной задачи }
     RegisterInput:
       type: object
       required: [email, password]

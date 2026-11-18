@@ -19,6 +19,8 @@ urlpatterns = [path("api/v1/_broken", _broken_plain_view), *project_urls.urlpatt
 
 @override_settings(ROOT_URLCONF=__name__)
 class ErrorFormatTests(ApiTestCase):
+    """Каждый код ответа 400–500 приходит в едином формате {"error": {...}}."""
+
     def setUp(self):
         super().setUp()
         authenticate(self.client, make_account(Role.ADMIN))

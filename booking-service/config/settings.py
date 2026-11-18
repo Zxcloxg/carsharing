@@ -73,6 +73,7 @@ INSTALLED_APPS = [
     'health',
     'fleet',
     'accounts',
+    'jobs',
 ]
 
 MIDDLEWARE = [
@@ -223,6 +224,33 @@ JWT_ISSUER = 'booking-service'
 JWT_ACCESS_TTL = timedelta(minutes=int(os.environ.get('JWT_ACCESS_TTL_MINUTES', '60')))
 
 
+# Фоновые задачи (ПР6, docs/async-scenario.md)
+# Стандартный API django.tasks; очередь — таблица background_tasks в той же
+# PostgreSQL, выполняет задачи отдельный процесс: python manage.py run_worker.
+
+TASKS = {
+    'default': {
+        'BACKEND': 'jobs.backends.DatabaseBackend',
+        'QUEUES': ['default'],
+        'OPTIONS': {
+            # Попыток на задачу; паузы между ними растут вдвое: 2 с, 4 с, 8 с… но не больше максимума.
+            'MAX_ATTEMPTS': int(os.environ.get('TASK_MAX_ATTEMPTS', '3')),
+            'RETRY_BACKOFF_SECONDS': float(os.environ.get('TASK_RETRY_BACKOFF_SECONDS', '2')),
+            'RETRY_BACKOFF_MAX_SECONDS': float(os.environ.get('TASK_RETRY_BACKOFF_MAX_SECONDS', '300')),
+            # Задачу, которую обработчик не завершил за это время (процесс убит), берёт другой обработчик.
+            'LEASE_SECONDS': float(os.environ.get('TASK_LEASE_SECONDS', '300')),
+        },
+    },
+}
+
+# Платёжный провайдер: списание за поездку выполняет фоновая задача (fleet/tasks.py).
+# Для локального запуска — эмулятор payment_provider_stub.py на порту 8030.
+PAYMENT_PROVIDER_URL = os.environ.get('PAYMENT_PROVIDER_URL', 'http://127.0.0.1:8030')
+# Явный тайм-аут вызова: зависший провайдер не держит обработчик дольше этого времени.
+PAYMENT_PROVIDER_TIMEOUT = float(os.environ.get('PAYMENT_PROVIDER_TIMEOUT', '5'))
+DEFAULT_FROM_EMAIL = os.environ.get('DEFAULT_FROM_EMAIL', 'receipts@carsharing.kz')
+
+
 # Logging
 # Сообщения о подключении к БД и работе сервиса — в консоль.
 
@@ -239,5 +267,7 @@ LOGGING = {
         'config': {'handlers': ['console'], 'level': 'INFO'},
         'fleet': {'handlers': ['console'], 'level': 'INFO'},
         'accounts': {'handlers': ['console'], 'level': 'INFO'},
+        # Очередь: постановка задачи, попытки, повторы, окончательный сбой (ПР6).
+        'jobs': {'handlers': ['console'], 'level': 'INFO'},
     },
 }

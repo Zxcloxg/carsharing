@@ -88,7 +88,7 @@ class BookingAdmin(admin.ModelAdmin):
 
 @admin.register(Payment)
 class PaymentAdmin(admin.ModelAdmin):
-    list_display = ("id", "booking", "amount", "status", "provider_payment_id", "paid_at")
+    list_display = ("id", "booking", "amount", "status", "provider_payment_id", "paid_at", "failure_reason")
     list_filter = ("status",)
 
 

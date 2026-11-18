@@ -17,4 +17,5 @@ urlpatterns = [
     path("bookings", views.BookingCollectionView.as_view(), name="booking-collection"),
     path("bookings/<str:booking_id>", views.BookingItemView.as_view(), name="booking-item"),
     path("bookings/<str:booking_id>/payments", views.BookingPaymentsView.as_view(), name="booking-payments"),
+    path("payments/<str:payment_id>", views.PaymentItemView.as_view(), name="payment-item"),
 ]

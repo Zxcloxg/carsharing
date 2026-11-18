@@ -43,6 +43,10 @@ ACCESS = {
     ("GET", "/api/v1/bookings/{id}"): AUTH,
     ("PATCH", "/api/v1/bookings/{id}"): AUTH,
     ("GET", "/api/v1/bookings/{id}/payments"): AUTH,
+    ("POST", "/api/v1/bookings/{id}/payments"): AUTH,
+    ("GET", "/api/v1/payments/{id}"): AUTH,
+    ("GET", "/api/v1/tasks"): STAFF,
+    ("GET", "/api/v1/tasks/{id}"): STAFF,
 }
 
 

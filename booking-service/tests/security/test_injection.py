@@ -35,6 +35,8 @@ def project_sources():
 
 
 class NoStringBuiltSqlTests(SimpleTestCase):
+    """В исходниках нет SQL, собранного из строк."""
+
     def test_raw_sql_only_with_constant_query(self):
         """Вызовы raw()/extra()/execute()/RawSQL допустимы только с литералом без подстановок."""
         offenders, checked = [], 0
@@ -55,6 +57,8 @@ class NoStringBuiltSqlTests(SimpleTestCase):
 
 
 class InjectionTests(ApiTestCase):
+    """SQL-фрагменты в параметрах, пути и теле не исполняются и не дают 500."""
+
     def setUp(self):
         super().setUp()
         self.admin = make_account(Role.ADMIN, email="admin@test.kz")

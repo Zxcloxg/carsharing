@@ -1,8 +1,8 @@
 """URL configuration for the booking-service.
 
 Public REST API of the carsharing core domain under /api/v1/:
-authentication and API users (accounts/urls.py), cars, customers and
-bookings (fleet/urls.py).
+authentication and API users (accounts/urls.py), cars, customers,
+bookings and payments (fleet/urls.py), background task status (jobs/urls.py).
 """
 from django.contrib import admin
 from django.urls import include, path
@@ -13,5 +13,6 @@ urlpatterns = [
     path("health/", health),
     path("api/v1/", include("accounts.urls")),
     path("api/v1/", include("fleet.urls")),
+    path("api/v1/", include("jobs.urls")),
     path("admin/", admin.site.urls),
 ]

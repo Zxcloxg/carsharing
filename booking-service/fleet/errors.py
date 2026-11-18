@@ -97,3 +97,27 @@ class LicenseNumberTaken(DomainError):
     status_code = status.HTTP_409_CONFLICT
     code = "license_number_taken"
     message = "Driver license is approved for another customer"
+
+
+class PaymentNotFound(DomainError):
+    status_code = status.HTTP_404_NOT_FOUND
+    code = "payment_not_found"
+    message = "Payment not found"
+
+
+class BookingNotPayable(DomainError):
+    status_code = status.HTTP_409_CONFLICT
+    code = "booking_not_payable"
+    message = "Only a finished booking with a cost can be paid"
+
+
+class PaymentAlreadyPaid(DomainError):
+    status_code = status.HTTP_409_CONFLICT
+    code = "payment_already_paid"
+    message = "Booking is already paid"
+
+
+class PaymentInProgress(DomainError):
+    status_code = status.HTTP_409_CONFLICT
+    code = "payment_in_progress"
+    message = "Payment for this booking is already in progress"

@@ -18,6 +18,9 @@ media/
 htmlcov/
 coverage.json
 
+# Логи процессов из async_check.py (ПР6)
+.async-check/
+
 # Env / secrets
 .env
 *.local

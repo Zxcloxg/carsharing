@@ -311,7 +311,12 @@ class Booking(models.Model):
 
 
 class Payment(models.Model):
-    """Списание за аренду. Неуспешные попытки сохраняются, поэтому у брони платежей может быть несколько."""
+    """Списание за аренду. Неуспешные попытки сохраняются, поэтому у брони платежей может быть несколько.
+
+    Жизненный цикл (ПР6): pending — создан при завершении поездки, списание ждёт
+    фоновой задачи; paid — провайдер подтвердил; failed — провайдер отказал или
+    недоступен дольше, чем длятся повторы (тогда клиент может запустить оплату заново).
+    """
 
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
     booking = models.ForeignKey(Booking, on_delete=models.PROTECT, related_name="payments")
@@ -320,6 +325,9 @@ class Payment(models.Model):
     provider_payment_id = models.CharField(
         max_length=64, unique=True, null=True, blank=True, db_comment="Идентификатор операции у платёжного провайдера"
     )
+    # ПР6: списание выполняет фоновая задача; здесь — её id и причина, если списать не удалось.
+    task_id = models.UUIDField(null=True, blank=True, db_comment="Фоновая задача списания (background_tasks.id)")
+    failure_reason = models.TextField(null=True, blank=True, db_comment="Почему списание не прошло")
     created_at = models.DateTimeField(auto_now_add=True)
     paid_at = models.DateTimeField(null=True, blank=True)
 
@@ -331,6 +339,13 @@ class Payment(models.Model):
             # За одну аренду деньги списываются успешно не больше одного раза.
             models.UniqueConstraint(
                 fields=["booking"], condition=Q(status="paid"), name="payments_one_paid_per_booking"
+            ),
+            # И не больше одного списания в процессе: повторная оплата не запускается поверх идущей.
+            models.UniqueConstraint(
+                fields=["booking"], condition=Q(status="pending"), name="payments_one_pending_per_booking"
+            ),
+            models.CheckConstraint(
+                condition=~Q(status="failed") | Q(failure_reason__isnull=False), name="payments_failed_has_reason"
             ),
             models.CheckConstraint(condition=Q(amount__gt=0), name="payments_amount_positive"),
             models.CheckConstraint(condition=Q(status__in=PaymentStatus.values), name="payments_status_valid"),

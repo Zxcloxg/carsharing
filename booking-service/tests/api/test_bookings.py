@@ -5,10 +5,13 @@ from rest_framework import status
 
 from fleet.models import Booking, Car, CarStatusChange, Payment
 from fleet.repositories import car_repository, car_status_history_repository
+from jobs.models import BackgroundTask
 from tests.helpers import VALID_CAR, StaffApiTestCase, make_customer
 
 
 class BookingApiTests(StaffApiTestCase):
+    """Бронирование и оплата: занятие машины, стоимость, платёж, конфликты и откат транзакций."""
+
     def setUp(self):
         super().setUp()
         self.car = self.client.post("/api/v1/cars", VALID_CAR, format="json").data
@@ -70,7 +73,7 @@ class BookingApiTests(StaffApiTestCase):
         response = self._book(car_id="00000000-0000-0000-0000-000000000000")
         self.assertEqual(response.status_code, status.HTTP_404_NOT_FOUND)
 
-    def test_finish_booking_frees_car_counts_cost_and_pays(self):
+    def test_finish_booking_frees_car_counts_cost_and_queues_payment(self):
         booking = self._book().data
         response = self.client.patch(f"/api/v1/bookings/{booking['id']}", {"status": "finished"}, format="json")
         self.assertEqual(response.status_code, status.HTTP_200_OK)
@@ -79,14 +82,17 @@ class BookingApiTests(StaffApiTestCase):
         self.assertEqual(float(response.data["total_cost"]), VALID_CAR["price_per_minute"])  # минимум 1 минута
         self.assertEqual(self._car_status(), "free")
 
+        # Списание — в фоне (ПР6): платёж ждёт обработчика очереди, задача поставлена.
         payments = self.client.get(f"/api/v1/bookings/{booking['id']}/payments").data["items"]
         self.assertEqual(
-            [(p["status"], float(p["amount"])) for p in payments], [("paid", VALID_CAR["price_per_minute"])]
+            [(p["status"], float(p["amount"])) for p in payments], [("pending", VALID_CAR["price_per_minute"])]
         )
+        self.assertEqual(response.data["payment"]["task"]["status"], "READY")
 
     def test_cancelled_booking_has_no_payment(self):
         booking = self._book().data
-        self.client.patch(f"/api/v1/bookings/{booking['id']}", {"status": "cancelled"}, format="json")
+        response = self.client.patch(f"/api/v1/bookings/{booking['id']}", {"status": "cancelled"}, format="json")
+        self.assertIsNone(response.data["payment"])
         self.assertEqual(Payment.objects.count(), 0)
 
     def test_closed_booking_cannot_be_closed_again(self):
@@ -132,7 +138,7 @@ class BookingApiTests(StaffApiTestCase):
         self.assertEqual(Car.objects.get(pk=self.car["id"]).status, "free")
 
     def test_failure_on_last_step_rolls_back_whole_finish(self):
-        """Бронь закрыта и платёж записан, но запись в журнал статусов падает — откатывается всё."""
+        """Бронь закрыта, платёж и задача списания записаны, но журнал статусов падает — откатывается всё."""
         booking = self._book().data
         history_before = CarStatusChange.objects.count()
         with (
@@ -144,5 +150,6 @@ class BookingApiTests(StaffApiTestCase):
             )
         self.assertEqual(Booking.objects.get(pk=booking["id"]).status, "active")
         self.assertEqual(Payment.objects.count(), 0)
+        self.assertEqual(BackgroundTask.objects.count(), 0)  # задача ставится в той же транзакции — откатилась тоже
         self.assertEqual(Car.objects.get(pk=self.car["id"]).status, "booked")
         self.assertEqual(CarStatusChange.objects.count(), history_before)

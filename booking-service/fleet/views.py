@@ -231,18 +231,40 @@ class BookingItemView(APIView):
 
     @require_auth
     def patch(self, request, booking_id):
+        """Завершить или отменить. Поездка закрывается сразу (200), списание за неё идёт в фоне:
+        в ответе платёж в статусе pending, его судьба — GET /api/v1/payments/{id}."""
         ensure_owner_or_staff(request.user, services.get_booking(booking_id)["customer_id"])
         body = BookingPatchSerializer(data=request.data)
         body.is_valid(raise_exception=True)
-        return Response(
-            services.close_booking(booking_id, body.validated_data["status"]), status=status.HTTP_200_OK
-        )
+        closed = services.close_booking(booking_id, body.validated_data["status"])
+        if closed["payment"]:
+            closed["payment"] = services.payment_with_task(closed["payment"])
+        return Response(closed, status=status.HTTP_200_OK)
 
 
 class BookingPaymentsView(APIView):
-    """/api/v1/bookings/{id}/payments — платежи по аренде."""
+    """/api/v1/bookings/{id}/payments — платежи по аренде и повторная оплата."""
 
     @require_auth
     def get(self, request, booking_id):
         ensure_owner_or_staff(request.user, services.get_booking(booking_id)["customer_id"])
         return Response(services.list_payments(booking_id), status=status.HTTP_200_OK)
+
+    @require_auth
+    def post(self, request, booking_id):
+        """Повторить оплату после сбоя: списание ставится в очередь, ответ — сразу 202 Accepted."""
+        ensure_owner_or_staff(request.user, services.get_booking(booking_id)["customer_id"])
+        payment = services.payment_with_task(services.retry_payment(booking_id))
+        return Response(
+            payment, status=status.HTTP_202_ACCEPTED, headers={"Location": f"/api/v1/payments/{payment['id']}"}
+        )
+
+
+class PaymentItemView(APIView):
+    """/api/v1/payments/{id} — статус платежа и его фоновой задачи (куда смотреть после 202)."""
+
+    @require_auth
+    def get(self, request, payment_id):
+        payment = services.get_payment(payment_id)
+        ensure_owner_or_staff(request.user, services.get_booking(payment["booking_id"])["customer_id"])
+        return Response(services.payment_with_task(payment), status=status.HTTP_200_OK)

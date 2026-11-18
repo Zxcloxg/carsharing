@@ -7,6 +7,8 @@ from tests.helpers import VALID_CUSTOMER, VALID_LICENSE, StaffApiTestCase
 
 
 class CustomerApiTests(StaffApiTestCase):
+    """Клиенты и проверка ВУ: регистрация профиля, одобрение и отклонение ВУ, конфликты."""
+
     def _register(self, **overrides):
         return self.client.post("/api/v1/customers", {**VALID_CUSTOMER, **overrides}, format="json")
 

@@ -18,6 +18,8 @@ ADMIN = CurrentUser("u4", "admin@test.kz", "admin", None)
 
 
 class View:
+    """Учебное представление с декораторами прав — без HTTP и базы."""
+
     @require_auth
     def profile(self, request):
         return "ok"
@@ -36,6 +38,8 @@ def call(method, user):
 
 
 class RouteDecoratorTests(SimpleTestCase):
+    """Декораторы require_auth и require_role: сначала 401, потом 403."""
+
     def test_anonymous_gets_401_everywhere(self):
         for method in ("profile", "delete_car", "review"):
             with self.subTest(method=method), self.assertRaises(NotAuthenticated):
@@ -68,6 +72,8 @@ class RouteDecoratorTests(SimpleTestCase):
 
 
 class OwnershipTests(SimpleTestCase):
+    """Проверка владельца записи: клиент — только свои данные, персонал — любые."""
+
     def test_owner_allowed(self):
         self.assertIsNone(ensure_owner_or_staff(ALICE, "cust-1"))
 
